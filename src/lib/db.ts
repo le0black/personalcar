@@ -1,0 +1,119 @@
+/**
+ * Acesso a dados no Supabase para veículos e abastecimentos.
+ * Converte entre as linhas snake_case do Postgres e os tipos camelCase do app.
+ * Todas as consultas são filtradas por RLS pelo user_id do usuário logado.
+ */
+
+import { requireSupabase } from "@/lib/supabase";
+import type { FuelType, Refuel, Vehicle } from "@/lib/fuel-data";
+
+// ── Linhas do banco (snake_case) ──────────────────────────────────────────
+type VehicleRow = {
+  id: string;
+  nome: string;
+  placa: string;
+  modelo: string;
+  ano: number;
+  tanque: number;
+};
+
+type RefuelRow = {
+  id: string;
+  vehicle_id: string;
+  data: string;
+  odometro: number;
+  litros: number;
+  preco_litro: number;
+  combustivel: string;
+  tanque_cheio: boolean;
+  posto: string;
+};
+
+// ── Mapeamentos ───────────────────────────────────────────────────────────
+const toVehicle = (r: VehicleRow): Vehicle => ({
+  id: r.id,
+  nome: r.nome,
+  placa: r.placa,
+  modelo: r.modelo,
+  ano: r.ano,
+  tanque: Number(r.tanque),
+});
+
+const toRefuel = (r: RefuelRow): Refuel => ({
+  id: r.id,
+  vehicleId: r.vehicle_id,
+  data: r.data,
+  odometro: Number(r.odometro),
+  litros: Number(r.litros),
+  precoLitro: Number(r.preco_litro),
+  combustivel: r.combustivel as FuelType,
+  tanqueCheio: r.tanque_cheio,
+  posto: r.posto,
+});
+
+// ── Veículos ──────────────────────────────────────────────────────────────
+export async function fetchVehicles(): Promise<Vehicle[]> {
+  const sb = requireSupabase();
+  const { data, error } = await sb
+    .from("vehicles")
+    .select("id, nome, placa, modelo, ano, tanque")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data as VehicleRow[]).map(toVehicle);
+}
+
+/** Insere um veículo. `user_id` é preenchido pelo default do banco (auth.uid()). */
+export async function insertVehicle(v: Omit<Vehicle, "id">): Promise<Vehicle> {
+  const sb = requireSupabase();
+  const { data, error } = await sb
+    .from("vehicles")
+    .insert({
+      nome: v.nome,
+      placa: v.placa,
+      modelo: v.modelo,
+      ano: v.ano,
+      tanque: v.tanque,
+    })
+    .select("id, nome, placa, modelo, ano, tanque")
+    .single();
+  if (error) throw error;
+  return toVehicle(data as VehicleRow);
+}
+
+export async function deleteVehicle(id: string): Promise<void> {
+  const sb = requireSupabase();
+  const { error } = await sb.from("vehicles").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ── Abastecimentos ────────────────────────────────────────────────────────
+export async function fetchRefuels(): Promise<Refuel[]> {
+  const sb = requireSupabase();
+  const { data, error } = await sb
+    .from("refuels")
+    .select("id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto")
+    .order("odometro", { ascending: true });
+  if (error) throw error;
+  return (data as RefuelRow[]).map(toRefuel);
+}
+
+/** Insere um abastecimento. `user_id` é preenchido pelo default do banco. */
+export async function insertRefuel(r: Omit<Refuel, "id">): Promise<Refuel> {
+  const sb = requireSupabase();
+  const { data, error } = await sb
+    .from("refuels")
+    .insert({
+      vehicle_id: r.vehicleId,
+      data: r.data,
+      odometro: r.odometro,
+      litros: r.litros,
+      preco_litro: r.precoLitro,
+      combustivel: r.combustivel,
+      tanque_cheio: r.tanqueCheio,
+      posto: r.posto,
+    })
+    .select("id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto")
+    .single();
+  if (error) throw error;
+  return toRefuel(data as RefuelRow);
+}
