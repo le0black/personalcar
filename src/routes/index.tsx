@@ -19,6 +19,8 @@ import { RefuelForm } from "@/components/fuel/RefuelForm";
 import { RefuelItem } from "@/components/fuel/RefuelItem";
 import { VehicleForm } from "@/components/fuel/VehicleForm";
 import { VehicleEditDialog } from "@/components/fuel/VehicleEditDialog";
+import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
+import { getTipoByModeloCompleto } from "@/lib/vehicle-database";
 import { ConsumoChart, GastoChart, PrecoChart } from "@/components/fuel/Charts";
 import { ReminderPanel, computeReminder } from "@/components/fuel/ReminderPanel";
 import { AuthGate } from "@/components/auth/AuthGate";
@@ -320,17 +322,25 @@ function Dashboard() {
           ) : null}
 
           <section className="panel mt-6 grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                Veículo selecionado
-              </p>
-              <p className="mt-1 truncate font-display text-lg font-semibold">
-                {vehicle.modelo} · {vehicle.ano}
-              </p>
-              <p className="numeral mt-1 text-sm text-muted-foreground">
-                {vehicle.placa} · tanque {vehicle.tanque} L · odômetro{" "}
-                {ultimoOdometro.toLocaleString("pt-BR")} km
-              </p>
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="grid size-16 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <VehicleIllustration
+                  tipo={getTipoByModeloCompleto(vehicle.modelo)}
+                  className="w-11"
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                  Veículo selecionado
+                </p>
+                <p className="mt-1 truncate font-display text-lg font-semibold">
+                  {vehicle.modelo} · {vehicle.ano}
+                </p>
+                <p className="numeral mt-1 text-sm text-muted-foreground">
+                  {vehicle.placa} · tanque {vehicle.tanque} L · odômetro{" "}
+                  {ultimoOdometro.toLocaleString("pt-BR")} km
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               {metrics ? (

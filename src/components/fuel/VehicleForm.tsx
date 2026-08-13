@@ -19,12 +19,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Vehicle } from "@/lib/fuel-data";
+import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import {
   findModelo,
   getAnos,
   getMarcas,
   getModelos,
+  getTipo,
   type VehicleCategory,
+  type VehicleTipo,
 } from "@/lib/vehicle-database";
 
 type Props = {
@@ -55,6 +58,10 @@ export function VehicleForm({ onAdd }: Props) {
     () => (f.marca && f.modelo ? getAnos(f.marca, f.modelo) : []),
     [f.marca, f.modelo],
   );
+  const tipoPreview: VehicleTipo = useMemo(() => {
+    const meta = f.modelo ? findModelo(f.marca, f.modelo) : undefined;
+    return meta ? getTipo(meta) : f.categoria;
+  }, [f.marca, f.modelo, f.categoria]);
 
   function reset() {
     setF(emptyState);
@@ -150,6 +157,19 @@ export function VehicleForm({ onAdd }: Props) {
                   {c}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Prévia da ilustração */}
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-card/50 p-3">
+            <div className="grid size-14 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              <VehicleIllustration tipo={tipoPreview} className="w-10" />
+            </div>
+            <div className="min-w-0 text-sm">
+              <p className="truncate font-medium">
+                {f.modelo ? `${f.marca} ${f.modelo}` : "Prévia do veículo"}
+              </p>
+              <p className="text-xs capitalize text-muted-foreground">{tipoPreview}</p>
             </div>
           </div>
 

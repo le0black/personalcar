@@ -673,6 +673,44 @@ export const vehicleDatabase: VehicleModel[] = [...CARROS, ...MOTOS].sort(
   (a, b) => a.marca.localeCompare(b.marca, "pt-BR") || a.modelo.localeCompare(b.modelo, "pt-BR"),
 );
 
+// ── Tipo de carroceria (para a ilustração) ─────────────────────────────────
+/** Tipo visual do veículo, usado para escolher a silhueta/ilustração. */
+export type VehicleTipo = "carro" | "suv" | "picape" | "moto";
+
+const RE_PICAPE =
+  /strada|toro|saveiro|amarok|montana|s10|hilux|ranger|frontier|l200|oroch|picape|dakota|f-1000|f-250|rampage|poer|courier|2500|3500|classic \(1500\)|chevy 500/i;
+const RE_SUV =
+  /cross|tiggo|haval|duster|captur|creta|kicks|renegade|compass|commander|cherokee|wrangler|tucson|sportage|sorento|pajero|outlander|eclipse|asx|rav4|sw4|hr-v|cr-v|zr-v|wr-v|ecosport|territory|bronco|edge|tiguan|taos|nivus|2008|3008|cactus|aircross|basalt|vitara|jimny|s-cross|stepway|stonic|\bsoul\b|song|yuan|\btan\b|freelander|discovery|defender|evoque|pantanal|pulse|fastback|tr4|q[357]|x[1356]|gl[ace]|xc[469]0|ix35/i;
+const MARCAS_SEMPRE_SUV = new Set(["Jeep", "Land Rover", "Troller"]);
+
+/** Deduz o tipo de carroceria de um modelo do catálogo. */
+export function getTipo(m: VehicleModel): VehicleTipo {
+  if (m.categoria === "moto") return "moto";
+  if (MARCAS_SEMPRE_SUV.has(m.marca)) return "suv";
+  const nome = m.modelo.toLowerCase();
+  if (RE_PICAPE.test(nome)) return "picape";
+  if (RE_SUV.test(nome)) return "suv";
+  return "carro";
+}
+
+/** Localiza um modelo pelo texto "Marca Modelo" (como salvo no veículo do usuário). */
+export function findByModeloCompleto(modeloCompleto: string): VehicleModel | undefined {
+  return vehicleDatabase.find((v) => `${v.marca} ${v.modelo}` === modeloCompleto);
+}
+
+/**
+ * Deduz o tipo a partir do texto "Marca Modelo" salvo no veículo.
+ * Tenta casar com o catálogo; se não achar, usa heurística por palavra-chave.
+ */
+export function getTipoByModeloCompleto(modeloCompleto: string): VehicleTipo {
+  const achado = findByModeloCompleto(modeloCompleto);
+  if (achado) return getTipo(achado);
+  const s = modeloCompleto.toLowerCase();
+  if (RE_PICAPE.test(s)) return "picape";
+  if (RE_SUV.test(s)) return "suv";
+  return "carro";
+}
+
 /** Retorna as marcas, opcionalmente filtradas por categoria (carro/moto). */
 export function getMarcas(categoria?: VehicleCategory): string[] {
   const set = new Set<string>();
