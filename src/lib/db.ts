@@ -80,6 +80,29 @@ export async function insertVehicle(v: Omit<Vehicle, "id">): Promise<Vehicle> {
   return toVehicle(data as VehicleRow);
 }
 
+/** Atualiza campos editáveis do veículo (apelido, placa, tanque, modelo, ano). */
+export async function updateVehicle(
+  id: string,
+  v: Partial<Omit<Vehicle, "id">>,
+): Promise<Vehicle> {
+  const sb = requireSupabase();
+  const patch: Record<string, unknown> = {};
+  if (v.nome !== undefined) patch["nome"] = v.nome;
+  if (v.placa !== undefined) patch["placa"] = v.placa;
+  if (v.modelo !== undefined) patch["modelo"] = v.modelo;
+  if (v.ano !== undefined) patch["ano"] = v.ano;
+  if (v.tanque !== undefined) patch["tanque"] = v.tanque;
+  const { data, error } = await sb
+    .from("vehicles")
+    .update(patch)
+    .eq("id", id)
+    .select("id, nome, placa, modelo, ano, tanque")
+    .single();
+  if (error) throw error;
+  return toVehicle(data as VehicleRow);
+}
+
+/** Remove o veículo. Os abastecimentos ligados caem por ON DELETE CASCADE. */
 export async function deleteVehicle(id: string): Promise<void> {
   const sb = requireSupabase();
   const { error } = await sb.from("vehicles").delete().eq("id", id);
@@ -116,4 +139,34 @@ export async function insertRefuel(r: Omit<Refuel, "id">): Promise<Refuel> {
     .single();
   if (error) throw error;
   return toRefuel(data as RefuelRow);
+}
+
+/** Atualiza campos editáveis de um abastecimento. */
+export async function updateRefuel(
+  id: string,
+  r: Partial<Omit<Refuel, "id" | "vehicleId">>,
+): Promise<Refuel> {
+  const sb = requireSupabase();
+  const patch: Record<string, unknown> = {};
+  if (r.data !== undefined) patch["data"] = r.data;
+  if (r.odometro !== undefined) patch["odometro"] = r.odometro;
+  if (r.litros !== undefined) patch["litros"] = r.litros;
+  if (r.precoLitro !== undefined) patch["preco_litro"] = r.precoLitro;
+  if (r.combustivel !== undefined) patch["combustivel"] = r.combustivel;
+  if (r.tanqueCheio !== undefined) patch["tanque_cheio"] = r.tanqueCheio;
+  if (r.posto !== undefined) patch["posto"] = r.posto;
+  const { data, error } = await sb
+    .from("refuels")
+    .update(patch)
+    .eq("id", id)
+    .select("id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto")
+    .single();
+  if (error) throw error;
+  return toRefuel(data as RefuelRow);
+}
+
+export async function deleteRefuel(id: string): Promise<void> {
+  const sb = requireSupabase();
+  const { error } = await sb.from("refuels").delete().eq("id", id);
+  if (error) throw error;
 }

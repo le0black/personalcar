@@ -16,12 +16,23 @@ import {
 import { toast, Toaster } from "sonner";
 import { MetricCard } from "@/components/fuel/MetricCard";
 import { RefuelForm } from "@/components/fuel/RefuelForm";
+import { RefuelItem } from "@/components/fuel/RefuelItem";
 import { VehicleForm } from "@/components/fuel/VehicleForm";
+import { VehicleEditDialog } from "@/components/fuel/VehicleEditDialog";
 import { ConsumoChart, GastoChart, PrecoChart } from "@/components/fuel/Charts";
 import { ReminderPanel, computeReminder } from "@/components/fuel/ReminderPanel";
 import { AuthGate } from "@/components/auth/AuthGate";
 import { supabase } from "@/lib/supabase";
-import { fetchRefuels, fetchVehicles, insertRefuel, insertVehicle } from "@/lib/db";
+import {
+  deleteRefuel,
+  deleteVehicle,
+  fetchRefuels,
+  fetchVehicles,
+  insertRefuel,
+  insertVehicle,
+  updateRefuel,
+  updateVehicle,
+} from "@/lib/db";
 
 import { brl, computeMetrics, num, type Refuel, type Vehicle } from "@/lib/fuel-data";
 
@@ -156,6 +167,52 @@ function Dashboard() {
     }
   }
 
+  async function editarVeiculo(id: string, patch: Pick<Vehicle, "nome" | "placa" | "tanque">) {
+    try {
+      const salvo = await updateVehicle(id, patch);
+      setVehicles((prev) => prev.map((v) => (v.id === id ? salvo : v)));
+      toast.success("Veículo atualizado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar o veículo.");
+    }
+  }
+
+  async function excluirVeiculo(id: string) {
+    try {
+      await deleteVehicle(id);
+      const restantes = vehicles.filter((v) => v.id !== id);
+      setVehicles(restantes);
+      setRefuels((prev) => prev.filter((r) => r.vehicleId !== id));
+      if (vehicleId === id) setVehicleId(restantes[0]?.id ?? null);
+      toast.success("Veículo excluído.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível excluir o veículo.");
+    }
+  }
+
+  async function editarAbastecimento(
+    id: string,
+    patch: Partial<Omit<Refuel, "id" | "vehicleId">>,
+  ) {
+    try {
+      const salvo = await updateRefuel(id, patch);
+      setRefuels((prev) => prev.map((r) => (r.id === id ? salvo : r)));
+      toast.success("Abastecimento atualizado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar o abastecimento.");
+    }
+  }
+
+  async function excluirAbastecimento(id: string) {
+    try {
+      await deleteRefuel(id);
+      setRefuels((prev) => prev.filter((r) => r.id !== id));
+      toast.success("Abastecimento excluído.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível excluir o abastecimento.");
+    }
+  }
+
   async function sair() {
     await supabase?.auth.signOut();
   }
@@ -275,24 +332,31 @@ function Dashboard() {
                 {ultimoOdometro.toLocaleString("pt-BR")} km
               </p>
             </div>
-            {metrics ? (
-              <div
-                className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${
-                  melhorando ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-                }`}
-              >
-                {melhorando ? (
-                  <TrendingUp className="size-4 shrink-0" />
-                ) : (
-                  <TrendingDown className="size-4 shrink-0" />
-                )}
-                <span className="numeral font-medium">
-                  {melhorando ? "+" : ""}
-                  {num(metrics.tendencia, 1)}%
-                </span>
-                <span className="text-muted-foreground">de eficiência recente</span>
-              </div>
-            ) : null}
+            <div className="flex items-center gap-3">
+              {metrics ? (
+                <div
+                  className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${
+                    melhorando ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
+                  }`}
+                >
+                  {melhorando ? (
+                    <TrendingUp className="size-4 shrink-0" />
+                  ) : (
+                    <TrendingDown className="size-4 shrink-0" />
+                  )}
+                  <span className="numeral font-medium">
+                    {melhorando ? "+" : ""}
+                    {num(metrics.tendencia, 1)}%
+                  </span>
+                  <span className="text-muted-foreground">de eficiência recente</span>
+                </div>
+              ) : null}
+              <VehicleEditDialog
+                vehicle={vehicle}
+                onSave={(patch) => editarVeiculo(vehicle.id, patch)}
+                onDelete={() => excluirVeiculo(vehicle.id)}
+              />
+            </div>
           </section>
 
           {metrics ? (
@@ -358,31 +422,12 @@ function Dashboard() {
               ) : (
                 <ul className="max-h-[520px] divide-y divide-border overflow-y-auto">
                   {doVeiculo.map((r) => (
-                    <li
+                    <RefuelItem
                       key={r.id}
-                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 py-4"
-                    >
-                      <div className="min-w-0">
-                        <p className="numeral text-sm font-medium">
-                          {new Date(r.data + "T00:00:00").toLocaleDateString("pt-BR")} ·{" "}
-                          {r.odometro.toLocaleString("pt-BR")} km
-                        </p>
-                        <p className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground">
-                          <MapPin className="size-3 shrink-0" />
-                          <span className="truncate">
-                            {r.posto} · {r.combustivel}
-                          </span>
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="numeral text-sm font-semibold">
-                          {brl(r.litros * r.precoLitro)}
-                        </p>
-                        <p className="numeral mt-1 text-xs text-muted-foreground">
-                          {num(r.litros, 1)} L · {brl(r.precoLitro)}/l
-                        </p>
-                      </div>
-                    </li>
+                      refuel={r}
+                      onSave={(patch) => editarAbastecimento(r.id, patch)}
+                      onDelete={() => excluirAbastecimento(r.id)}
+                    />
                   ))}
                 </ul>
               )}
