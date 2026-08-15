@@ -21,7 +21,7 @@ import { VehicleForm } from "@/components/fuel/VehicleForm";
 import { VehicleEditDialog } from "@/components/fuel/VehicleEditDialog";
 import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import { OdometerPanel } from "@/components/fuel/OdometerPanel";
-import { getTipoByModeloCompleto } from "@/lib/vehicle-database";
+import { getConsumoByModeloCompleto, getTipoByModeloCompleto } from "@/lib/vehicle-database";
 import { ConsumoChart, GastoChart, PrecoChart } from "@/components/fuel/Charts";
 import { ReminderPanel, computeReminder } from "@/components/fuel/ReminderPanel";
 import { AuthGate } from "@/components/auth/AuthGate";
@@ -98,6 +98,7 @@ function Dashboard() {
   }, []);
 
   const vehicle = vehicles.find((v) => v.id === vehicleId) ?? null;
+  const consumoRef = vehicle ? getConsumoByModeloCompleto(vehicle.modelo) : null;
 
   const doVeiculo = useMemo(
     () =>
@@ -355,6 +356,12 @@ function Dashboard() {
                   {vehicle.placa} · tanque {vehicle.tanque} L · odômetro{" "}
                   {ultimoOdometro.toLocaleString("pt-BR")} km
                 </p>
+                {consumoRef ? (
+                  <p className="numeral mt-1 text-xs text-muted-foreground">
+                    consumo ref.: {num(consumoRef.cidade, 0)} cidade · {num(consumoRef.rodovia, 0)}{" "}
+                    rodovia km/l
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -388,7 +395,7 @@ function Dashboard() {
             <OdometerPanel
               odometro={vehicle.odometroAtual ?? ultimoOdometro}
               ultimoOdometro={ultimoOdometro}
-              consumoMedio={metrics?.consumoMedio}
+              consumoMedio={metrics?.consumoMedio ?? consumoRef?.misto}
               precoMedio={metrics?.precoMedio}
               tanque={vehicle.tanque}
               onSave={salvarOdometro}

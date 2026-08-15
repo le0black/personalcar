@@ -120,14 +120,16 @@ export function OdometerPanel({
             {temEstimativa ? (
               <>
                 <Stat label="Combustível (est.)" value={`${num(litrosEstimados, 1)} L`} />
-                <Stat label="Custo (est.)" value={brl(custoEstimado)} />
+                {precoMedio && precoMedio > 0 ? (
+                  <Stat label="Custo (est.)" value={brl(custoEstimado)} />
+                ) : null}
                 <Stat label="Do tanque (est.)" value={`${num(pctTanque, 0)}%`} />
               </>
             ) : null}
           </div>
           {temEstimativa ? (
             <p className="mt-3 text-xs text-muted-foreground">
-              Estimativa pelo consumo médio de {num(consumoMedio!, 2)} km/l. O valor real aparece no
+              Estimativa pelo consumo de {num(consumoMedio!, 1)} km/l. O valor real aparece no
               próximo abastecimento com tanque cheio.
             </p>
           ) : (

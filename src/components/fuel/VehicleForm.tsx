@@ -23,6 +23,7 @@ import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import {
   findModelo,
   getAnos,
+  getConsumo,
   getMarcas,
   getModelos,
   getTipo,
@@ -62,6 +63,10 @@ export function VehicleForm({ onAdd }: Props) {
     const meta = f.modelo ? findModelo(f.marca, f.modelo) : undefined;
     return meta ? getTipo(meta) : f.categoria;
   }, [f.marca, f.modelo, f.categoria]);
+  const consumoPreview = useMemo(() => {
+    const meta = f.modelo ? findModelo(f.marca, f.modelo) : undefined;
+    return meta ? getConsumo(meta) : null;
+  }, [f.marca, f.modelo]);
 
   function reset() {
     setF(emptyState);
@@ -170,6 +175,11 @@ export function VehicleForm({ onAdd }: Props) {
                 {f.modelo ? `${f.marca} ${f.modelo}` : "Prévia do veículo"}
               </p>
               <p className="text-xs capitalize text-muted-foreground">{tipoPreview}</p>
+              {consumoPreview ? (
+                <p className="numeral text-xs text-muted-foreground">
+                  ~{consumoPreview.cidade} cidade · {consumoPreview.rodovia} rodovia km/l
+                </p>
+              ) : null}
             </div>
           </div>
 

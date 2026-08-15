@@ -711,6 +711,333 @@ export function getTipoByModeloCompleto(modeloCompleto: string): VehicleTipo {
   return "carro";
 }
 
+// ── Consumo estimado (km/l) ────────────────────────────────────────────────
+/**
+ * Consumo de referência em km/l — cidade e rodovia, base GASOLINA.
+ * São estimativas típicas do mercado brasileiro (padrão INMETRO/PBE), não
+ * medições oficiais por versão. Para flex no etanol, reduza ~30%.
+ * O `misto` é uma ponderação simples (55% cidade / 45% rodovia).
+ */
+export type ConsumoEstimado = { cidade: number; rodovia: number; misto: number };
+
+// Chave: "Marca|Modelo" (igual ao catálogo). Valor: [cidade, rodovia].
+// Modelos ausentes caem no fallback por tipo/combustível — nada quebra.
+const CONSUMO: Record<string, [number, number]> = {
+  // Volkswagen
+  "Volkswagen|Fusca": [8, 11],
+  "Volkswagen|Brasília": [8, 11],
+  "Volkswagen|Gol": [10, 14],
+  "Volkswagen|Voyage": [10, 14],
+  "Volkswagen|Parati": [9, 13],
+  "Volkswagen|Saveiro": [9, 12],
+  "Volkswagen|Santana": [8, 12],
+  "Volkswagen|Polo": [11, 15],
+  "Volkswagen|Polo Sedan / Virtus": [11, 15],
+  "Volkswagen|Virtus": [11, 15],
+  "Volkswagen|Golf": [9, 13],
+  "Volkswagen|Fox": [11, 14],
+  "Volkswagen|CrossFox": [10, 13],
+  "Volkswagen|SpaceFox": [10, 13],
+  "Volkswagen|Jetta": [8, 12],
+  "Volkswagen|up!": [12, 15],
+  "Volkswagen|Amarok": [8, 11],
+  "Volkswagen|Tiguan": [8, 11],
+  "Volkswagen|T-Cross": [10, 13],
+  "Volkswagen|Nivus": [11, 14],
+  "Volkswagen|Taos": [9, 12],
+  // Fiat
+  "Fiat|147": [9, 12],
+  "Fiat|Uno": [11, 14],
+  "Fiat|Uno (novo)": [12, 15],
+  "Fiat|Palio": [11, 14],
+  "Fiat|Palio Weekend": [10, 13],
+  "Fiat|Siena": [11, 14],
+  "Fiat|Grand Siena": [11, 15],
+  "Fiat|Punto": [10, 13],
+  "Fiat|Idea": [10, 13],
+  "Fiat|Linea": [9, 13],
+  "Fiat|Bravo": [9, 12],
+  "Fiat|Stilo": [8, 12],
+  "Fiat|Doblò": [8, 11],
+  "Fiat|Strada": [10, 13],
+  "Fiat|Toro": [8, 11],
+  "Fiat|Mobi": [12, 15],
+  "Fiat|Argo": [11, 14],
+  "Fiat|Cronos": [11, 15],
+  "Fiat|Fastback": [10, 13],
+  "Fiat|Pulse": [10, 13],
+  "Fiat|Fiorino": [9, 12],
+  "Fiat|500": [11, 14],
+  // Chevrolet
+  "Chevrolet|Opala": [6, 9],
+  "Chevrolet|Chevette": [9, 12],
+  "Chevrolet|Monza": [8, 11],
+  "Chevrolet|Kadett": [9, 12],
+  "Chevrolet|Vectra": [8, 12],
+  "Chevrolet|Corsa": [10, 13],
+  "Chevrolet|Astra": [8, 12],
+  "Chevrolet|Celta": [11, 14],
+  "Chevrolet|Meriva": [9, 12],
+  "Chevrolet|Montana": [10, 13],
+  "Chevrolet|Prisma": [11, 14],
+  "Chevrolet|Agile": [9, 12],
+  "Chevrolet|Cobalt": [10, 13],
+  "Chevrolet|Onix": [11, 15],
+  "Chevrolet|Onix Plus": [11, 15],
+  "Chevrolet|Spin": [9, 12],
+  "Chevrolet|Tracker": [9, 12],
+  "Chevrolet|Cruze": [9, 13],
+  "Chevrolet|S10": [8, 11],
+  "Chevrolet|Blazer": [7, 10],
+  "Chevrolet|Trailblazer": [7, 10],
+  "Chevrolet|Equinox": [8, 11],
+  "Chevrolet|Camaro": [6, 9],
+  "Chevrolet|Zafira": [8, 11],
+  // Ford
+  "Ford|Corcel": [8, 11],
+  "Ford|Belina": [8, 11],
+  "Ford|Del Rey": [8, 11],
+  "Ford|Escort": [8, 12],
+  "Ford|Verona": [8, 12],
+  "Ford|Ka": [11, 15],
+  "Ford|Fiesta": [11, 14],
+  "Ford|EcoSport": [9, 12],
+  "Ford|Focus": [9, 13],
+  "Ford|Fusion": [8, 12],
+  "Ford|Ranger": [8, 11],
+  "Ford|Territory": [9, 12],
+  "Ford|Bronco Sport": [7, 10],
+  "Ford|Maverick (picape)": [8, 11],
+  "Ford|Mustang": [6, 9],
+  "Ford|Edge": [7, 10],
+  "Ford|Courier": [9, 12],
+  // Renault
+  "Renault|Clio": [11, 14],
+  "Renault|Scénic": [8, 12],
+  "Renault|Mégane": [8, 12],
+  "Renault|Kangoo": [9, 12],
+  "Renault|Symbol": [10, 13],
+  "Renault|Logan": [10, 14],
+  "Renault|Sandero": [10, 14],
+  "Renault|Stepway": [10, 13],
+  "Renault|Duster": [9, 12],
+  "Renault|Oroch": [9, 12],
+  "Renault|Captur": [9, 12],
+  "Renault|Kwid": [13, 16],
+  "Renault|Fluence": [8, 12],
+  "Renault|Master": [8, 10],
+  // Toyota
+  "Toyota|Bandeirante": [6, 9],
+  "Toyota|Corolla": [11, 14],
+  "Toyota|Corolla Cross": [10, 14],
+  "Toyota|Camry": [8, 12],
+  "Toyota|Etios": [11, 15],
+  "Toyota|Yaris": [11, 15],
+  "Toyota|Hilux": [8, 12],
+  "Toyota|SW4": [7, 10],
+  "Toyota|RAV4": [10, 13],
+  "Toyota|Prius": [18, 20],
+  // Honda
+  "Honda|Civic": [10, 14],
+  "Honda|Accord": [8, 12],
+  "Honda|Fit": [11, 15],
+  "Honda|City": [11, 15],
+  "Honda|HR-V": [10, 13],
+  "Honda|WR-V": [10, 13],
+  "Honda|CR-V": [8, 11],
+  "Honda|ZR-V": [9, 12],
+  // Hyundai
+  "Hyundai|HB20": [11, 15],
+  "Hyundai|HB20S": [11, 15],
+  "Hyundai|HB20X": [10, 13],
+  "Hyundai|i30": [9, 12],
+  "Hyundai|Elantra": [9, 13],
+  "Hyundai|Azera": [7, 11],
+  "Hyundai|Tucson": [8, 11],
+  "Hyundai|Creta": [9, 12],
+  "Hyundai|Santa Fé": [7, 10],
+  "Hyundai|ix35": [8, 11],
+  "Hyundai|Veloster": [9, 12],
+  // Nissan
+  "Nissan|March": [11, 14],
+  "Nissan|Versa": [11, 15],
+  "Nissan|Sentra": [10, 14],
+  "Nissan|Tiida": [9, 12],
+  "Nissan|Livina": [9, 12],
+  "Nissan|Kicks": [11, 14],
+  "Nissan|Frontier": [8, 11],
+  // Jeep
+  "Jeep|Cherokee": [6, 9],
+  "Jeep|Grand Cherokee": [6, 9],
+  "Jeep|Wrangler": [6, 9],
+  "Jeep|Renegade": [9, 12],
+  "Jeep|Compass": [8, 12],
+  "Jeep|Commander": [8, 11],
+  // Peugeot
+  "Peugeot|205": [10, 13],
+  "Peugeot|206": [10, 13],
+  "Peugeot|207": [10, 13],
+  "Peugeot|208": [10, 14],
+  "Peugeot|307": [9, 12],
+  "Peugeot|308": [9, 12],
+  "Peugeot|408": [8, 12],
+  "Peugeot|2008": [9, 12],
+  "Peugeot|3008": [8, 11],
+  "Peugeot|Partner": [9, 12],
+  // Citroën
+  "Citroën|C3": [10, 14],
+  "Citroën|C4": [8, 12],
+  "Citroën|C4 Lounge": [9, 13],
+  "Citroën|C4 Cactus": [9, 12],
+  "Citroën|C5": [8, 12],
+  "Citroën|Xsara Picasso": [8, 12],
+  "Citroën|Aircross": [9, 12],
+  "Citroën|Basalt": [10, 13],
+  // Mitsubishi
+  "Mitsubishi|L200": [8, 11],
+  "Mitsubishi|Pajero": [7, 10],
+  "Mitsubishi|Pajero TR4": [8, 11],
+  "Mitsubishi|Pajero Sport": [7, 10],
+  "Mitsubishi|Lancer": [9, 12],
+  "Mitsubishi|ASX": [8, 11],
+  "Mitsubishi|Outlander": [8, 11],
+  "Mitsubishi|Eclipse Cross": [8, 11],
+  // Kia
+  "Kia|Picanto": [11, 14],
+  "Kia|Cerato": [9, 13],
+  "Kia|Sportage": [8, 11],
+  "Kia|Sorento": [8, 11],
+  "Kia|Soul": [9, 12],
+  "Kia|Bongo": [9, 12],
+  "Kia|Stonic": [10, 13],
+  // Caoa Chery
+  "Caoa Chery|QQ": [12, 15],
+  "Caoa Chery|Celer": [10, 13],
+  "Caoa Chery|Tiggo 2": [9, 12],
+  "Caoa Chery|Tiggo 3x": [9, 12],
+  "Caoa Chery|Tiggo 5x": [9, 12],
+  "Caoa Chery|Tiggo 7": [8, 11],
+  "Caoa Chery|Tiggo 8": [8, 11],
+  "Caoa Chery|Arrizo 5": [10, 13],
+  "Caoa Chery|Arrizo 6": [10, 13],
+  // GWM (híbrido)
+  "GWM|Haval H6": [11, 13],
+  // Suzuki
+  "Suzuki|Vitara": [9, 12],
+  "Suzuki|Grand Vitara": [7, 10],
+  "Suzuki|Jimny": [9, 12],
+  "Suzuki|SX4": [9, 12],
+  "Suzuki|Swift": [11, 14],
+  "Suzuki|S-Cross": [9, 13],
+  // Premium (gasolina)
+  "BMW|Série 1": [8, 12],
+  "BMW|Série 3": [8, 13],
+  "BMW|Série 5": [7, 12],
+  "BMW|X1": [8, 12],
+  "BMW|X3": [7, 11],
+  "BMW|X5": [6, 10],
+  "BMW|X6": [6, 10],
+  "Mercedes-Benz|Classe A": [9, 13],
+  "Mercedes-Benz|Classe C": [8, 13],
+  "Mercedes-Benz|Classe E": [7, 12],
+  "Mercedes-Benz|GLA": [8, 12],
+  "Mercedes-Benz|GLC": [7, 11],
+  "Mercedes-Benz|GLE": [6, 10],
+  "Audi|A3": [9, 13],
+  "Audi|A4": [8, 12],
+  "Audi|A5": [8, 12],
+  "Audi|Q3": [8, 11],
+  "Audi|Q5": [7, 11],
+  "Audi|Q7": [6, 9],
+  "Volvo|XC40": [8, 11],
+  "Volvo|XC60": [7, 11],
+  "Volvo|XC90": [7, 10],
+  "Volvo|S60": [8, 12],
+  // Picapes grandes / off-road (diesel)
+  "RAM|2500": [6, 9],
+  "RAM|3500": [6, 9],
+  "RAM|Rampage": [9, 12],
+  "RAM|Classic (1500)": [6, 9],
+  "Troller|T4": [7, 10],
+  "Troller|Pantanal": [7, 10],
+  // Motos — Honda
+  "Honda|CG 125": [45, 55],
+  "Honda|CG 150 Titan": [40, 48],
+  "Honda|CG 160 Titan": [45, 52],
+  "Honda|CG 160 Fan": [45, 52],
+  "Honda|CG 160 Start": [45, 52],
+  "Honda|Biz 125": [45, 55],
+  "Honda|Pop 110i": [55, 62],
+  "Honda|CB 300": [30, 35],
+  "Honda|CB 300F Twister": [30, 35],
+  "Honda|CB 500": [25, 30],
+  "Honda|CB 500X": [25, 30],
+  "Honda|XRE 190": [40, 45],
+  "Honda|XRE 300": [30, 35],
+  "Honda|Bros 160": [40, 45],
+  "Honda|PCX 150": [38, 44],
+  "Honda|PCX 160": [40, 45],
+  "Honda|CBR 1000RR": [14, 18],
+  "Honda|Africa Twin": [18, 22],
+  // Motos — Yamaha
+  "Yamaha|Factor 125": [40, 48],
+  "Yamaha|Factor 150": [40, 46],
+  "Yamaha|Fazer 150": [40, 46],
+  "Yamaha|Fazer 250": [30, 35],
+  "Yamaha|Lander 250": [30, 35],
+  "Yamaha|XTZ 125": [38, 45],
+  "Yamaha|XTZ 150 Crosser": [38, 44],
+  "Yamaha|XTZ 250 Ténéré": [28, 33],
+  "Yamaha|NMax 160": [35, 42],
+  "Yamaha|MT-03": [25, 30],
+  "Yamaha|MT-07": [18, 22],
+  "Yamaha|MT-09": [16, 20],
+  "Yamaha|R3 (YZF-R3)": [25, 30],
+  "Yamaha|R15": [35, 42],
+  // Motos — Suzuki / Kawasaki
+  "Suzuki|Yes 125": [40, 48],
+  "Suzuki|Intruder 125": [40, 48],
+  "Suzuki|GSX-S750": [16, 20],
+  "Suzuki|Hayabusa": [12, 17],
+  "Suzuki|V-Strom 650": [20, 25],
+  "Kawasaki|Ninja 300": [25, 30],
+  "Kawasaki|Ninja 400": [25, 30],
+  "Kawasaki|Z400": [25, 30],
+  "Kawasaki|Z900": [15, 19],
+  "Kawasaki|Versys 650": [20, 25],
+};
+
+const FALLBACK_TIPO: Record<VehicleTipo, [number, number]> = {
+  carro: [10, 13],
+  suv: [8, 11],
+  picape: [9, 12],
+  moto: [35, 40],
+};
+
+function mkConsumo(cidade: number, rodovia: number): ConsumoEstimado {
+  return { cidade, rodovia, misto: Math.round((cidade * 0.55 + rodovia * 0.45) * 10) / 10 };
+}
+
+/**
+ * Consumo estimado (cidade/rodovia/misto, km/l) de um modelo do catálogo.
+ * Retorna null para elétricos (tanque 0). Usa fallback por tipo se o modelo
+ * específico não estiver na tabela.
+ */
+export function getConsumo(m: VehicleModel): ConsumoEstimado | null {
+  if (m.tanque === 0) return null; // elétrico — km/l não se aplica
+  const hit = CONSUMO[`${m.marca}|${m.modelo}`];
+  if (hit) return mkConsumo(hit[0], hit[1]);
+  const base = FALLBACK_TIPO[getTipo(m)];
+  return mkConsumo(base[0], base[1]);
+}
+
+/** Consumo estimado a partir do texto "Marca Modelo" salvo no veículo. */
+export function getConsumoByModeloCompleto(modeloCompleto: string): ConsumoEstimado | null {
+  const m = findByModeloCompleto(modeloCompleto);
+  if (m) return getConsumo(m);
+  return null;
+}
+
 /** Retorna as marcas, opcionalmente filtradas por categoria (carro/moto). */
 export function getMarcas(categoria?: VehicleCategory): string[] {
   const set = new Set<string>();
