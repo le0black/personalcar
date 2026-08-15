@@ -29,7 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { brl, num, type FuelType, type Refuel } from "@/lib/fuel-data";
+import { brl, num, parseNumero, type FuelType, type Refuel } from "@/lib/fuel-data";
 
 type Props = {
   refuel: Refuel;
@@ -62,9 +62,9 @@ export function RefuelItem({ refuel, onSave, onDelete }: Props) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const odo = Number(odometro);
-    const l = Number(litros);
-    const p = Number(preco);
+    const odo = parseNumero(odometro);
+    const l = parseNumero(litros);
+    const p = parseNumero(preco);
     if (!odo || !l || !p) return setErro("Preencha odômetro, litros e preço.");
     setErro(null);
     await onSave({

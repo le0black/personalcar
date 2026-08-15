@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { FuelType, Refuel } from "@/lib/fuel-data";
+import { parseNumero, type FuelType, type Refuel } from "@/lib/fuel-data";
 
 type Props = {
   vehicleId: string;
@@ -27,9 +27,9 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const odo = Number(odometro);
-    const l = Number(litros);
-    const p = Number(preco);
+    const odo = parseNumero(odometro);
+    const l = parseNumero(litros);
+    const p = parseNumero(preco);
     if (!odo || !l || !p) return setErro("Preencha odômetro, litros e preço.");
     if (odo <= ultimoOdometro)
       return setErro(`O odômetro deve ser maior que ${ultimoOdometro.toLocaleString("pt-BR")} km.`);

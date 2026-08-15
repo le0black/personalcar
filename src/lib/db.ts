@@ -15,7 +15,10 @@ type VehicleRow = {
   modelo: string;
   ano: number;
   tanque: number;
+  odometro_atual: number | null;
 };
+
+const VEHICLE_COLS = "id, nome, placa, modelo, ano, tanque, odometro_atual";
 
 type RefuelRow = {
   id: string;
@@ -37,6 +40,7 @@ const toVehicle = (r: VehicleRow): Vehicle => ({
   modelo: r.modelo,
   ano: r.ano,
   tanque: Number(r.tanque),
+  odometroAtual: r.odometro_atual === null ? null : Number(r.odometro_atual),
 });
 
 const toRefuel = (r: RefuelRow): Refuel => ({
@@ -56,7 +60,7 @@ export async function fetchVehicles(): Promise<Vehicle[]> {
   const sb = requireSupabase();
   const { data, error } = await sb
     .from("vehicles")
-    .select("id, nome, placa, modelo, ano, tanque")
+    .select(VEHICLE_COLS)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data as VehicleRow[]).map(toVehicle);
@@ -74,7 +78,7 @@ export async function insertVehicle(v: Omit<Vehicle, "id">): Promise<Vehicle> {
       ano: v.ano,
       tanque: v.tanque,
     })
-    .select("id, nome, placa, modelo, ano, tanque")
+    .select(VEHICLE_COLS)
     .single();
   if (error) throw error;
   return toVehicle(data as VehicleRow);
@@ -92,11 +96,25 @@ export async function updateVehicle(
   if (v.modelo !== undefined) patch["modelo"] = v.modelo;
   if (v.ano !== undefined) patch["ano"] = v.ano;
   if (v.tanque !== undefined) patch["tanque"] = v.tanque;
+  if (v.odometroAtual !== undefined) patch["odometro_atual"] = v.odometroAtual;
   const { data, error } = await sb
     .from("vehicles")
     .update(patch)
     .eq("id", id)
-    .select("id, nome, placa, modelo, ano, tanque")
+    .select(VEHICLE_COLS)
+    .single();
+  if (error) throw error;
+  return toVehicle(data as VehicleRow);
+}
+
+/** Atualiza apenas o odômetro atual do veículo (uso manual ou via GPS). */
+export async function updateOdometro(id: string, km: number): Promise<Vehicle> {
+  const sb = requireSupabase();
+  const { data, error } = await sb
+    .from("vehicles")
+    .update({ odometro_atual: km })
+    .eq("id", id)
+    .select(VEHICLE_COLS)
     .single();
   if (error) throw error;
   return toVehicle(data as VehicleRow);

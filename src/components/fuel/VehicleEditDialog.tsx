@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { Vehicle } from "@/lib/fuel-data";
+import { parseNumero, type Vehicle } from "@/lib/fuel-data";
 
 type Props = {
   vehicle: Vehicle;
@@ -50,7 +50,7 @@ export function VehicleEditDialog({ vehicle, onSave, onDelete }: Props) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const t = Number(tanque);
+    const t = parseNumero(tanque);
     if (!t || t <= 0) return setErro("Informe a capacidade do tanque (litros).");
     setErro(null);
     await onSave({

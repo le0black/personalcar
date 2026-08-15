@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Vehicle } from "@/lib/fuel-data";
+import { parseNumero, type Vehicle } from "@/lib/fuel-data";
 import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import {
   findModelo,
@@ -95,7 +95,7 @@ export function VehicleForm({ onAdd }: Props) {
     if (!f.marca || !f.modelo || !f.ano) {
       return setErro("Selecione marca, modelo e ano.");
     }
-    const tanque = Number(f.tanque);
+    const tanque = parseNumero(f.tanque);
     if (!tanque || tanque <= 0) {
       return setErro("Informe a capacidade do tanque (litros).");
     }

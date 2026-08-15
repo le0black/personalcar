@@ -20,6 +20,7 @@ import { RefuelItem } from "@/components/fuel/RefuelItem";
 import { VehicleForm } from "@/components/fuel/VehicleForm";
 import { VehicleEditDialog } from "@/components/fuel/VehicleEditDialog";
 import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
+import { OdometerPanel } from "@/components/fuel/OdometerPanel";
 import { getTipoByModeloCompleto } from "@/lib/vehicle-database";
 import { ConsumoChart, GastoChart, PrecoChart } from "@/components/fuel/Charts";
 import { ReminderPanel, computeReminder } from "@/components/fuel/ReminderPanel";
@@ -32,6 +33,7 @@ import {
   fetchVehicles,
   insertRefuel,
   insertVehicle,
+  updateOdometro,
   updateRefuel,
   updateVehicle,
 } from "@/lib/db";
@@ -117,7 +119,8 @@ function Dashboard() {
   const [lembretes, setLembretes] = useState<Record<string, boolean>>({});
 
   const chave = vehicleId ?? "";
-  const odometroAtual = odometros[chave] ?? ultimoOdometro + 320;
+  const odometroAtual =
+    odometros[chave] ?? vehicle?.odometroAtual ?? ultimoOdometro + 320;
   const limiteKm = limites[chave] ?? 80;
   const lembreteAtivo = lembretes[chave] ?? true;
 
@@ -212,6 +215,18 @@ function Dashboard() {
       toast.success("Abastecimento excluído.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível excluir o abastecimento.");
+    }
+  }
+
+  async function salvarOdometro(km: number) {
+    if (!vehicle) return;
+    try {
+      const salvo = await updateOdometro(vehicle.id, km);
+      setVehicles((prev) => prev.map((v) => (v.id === vehicle.id ? salvo : v)));
+      setOdometros((p) => ({ ...p, [vehicle.id]: km }));
+      toast.success("Odômetro atualizado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar o odômetro.");
     }
   }
 
@@ -368,6 +383,14 @@ function Dashboard() {
               />
             </div>
           </section>
+
+          <div className="mt-4">
+            <OdometerPanel
+              odometro={vehicle.odometroAtual ?? ultimoOdometro}
+              ultimoOdometro={ultimoOdometro}
+              onSave={salvarOdometro}
+            />
+          </div>
 
           {metrics ? (
             <>

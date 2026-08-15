@@ -7,6 +7,8 @@ export type Vehicle = {
   modelo: string;
   ano: number;
   tanque: number;
+  /** Leitura atual do hodômetro (manual ou via GPS). null = nunca informada. */
+  odometroAtual?: number | null;
 };
 
 export type Refuel = {
@@ -75,6 +77,21 @@ export const initialRefuels: Refuel[] = [
   ...build("v1", 32140, 12.4, 6.09, "Shell Ipiranga Av. Brasil", "Gasolina"),
   ...build("v2", 78450, 9.1, 5.74, "Posto BR Rodovia 101", "Diesel"),
 ];
+
+/**
+ * Converte texto digitado em número, aceitando o formato brasileiro.
+ * "38,5" -> 38.5 · "1.234,56" -> 1234.56 · "6.09" -> 6.09 · "45000" -> 45000
+ * Retorna NaN quando não dá para interpretar.
+ */
+export function parseNumero(v: string): number {
+  if (!v) return NaN;
+  let s = v.trim().replace(/\s/g, "");
+  if (s.includes(",")) {
+    // vírgula é o separador decimal; pontos são milhar
+    s = s.replace(/\./g, "").replace(",", ".");
+  }
+  return Number(s);
+}
 
 export const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
