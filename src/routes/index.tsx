@@ -388,6 +388,9 @@ function Dashboard() {
             <OdometerPanel
               odometro={vehicle.odometroAtual ?? ultimoOdometro}
               ultimoOdometro={ultimoOdometro}
+              consumoMedio={metrics?.consumoMedio}
+              precoMedio={metrics?.precoMedio}
+              tanque={vehicle.tanque}
               onSave={salvarOdometro}
             />
           </div>
