@@ -44,6 +44,7 @@ const emptyState = {
   nome: "",
   placa: "",
   tanque: "",
+  odometro: "",
 };
 
 export function VehicleForm({ onAdd }: Props) {
@@ -110,6 +111,7 @@ export function VehicleForm({ onAdd }: Props) {
     setErro(null);
     setEnviando(true);
     try {
+      const odo = parseNumero(f.odometro);
       const ok = await onAdd({
         id: `v-${Date.now()}`,
         nome: f.nome.trim() || f.modelo,
@@ -117,6 +119,7 @@ export function VehicleForm({ onAdd }: Props) {
         modelo: `${f.marca} ${f.modelo}`,
         ano: Number(f.ano),
         tanque,
+        odometroInicial: odo > 0 ? odo : null,
       });
       // Só fecha/reseta se salvou; numa falha mantém os dados preenchidos.
       if (ok) {
@@ -284,6 +287,22 @@ export function VehicleForm({ onAdd }: Props) {
                 onChange={(e) => setF((p) => ({ ...p, placa: e.target.value }))}
                 className="uppercase"
               />
+            </div>
+
+            {/* Hodômetro inicial */}
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="odo-ini">Hodômetro atual (km)</Label>
+              <Input
+                id="odo-ini"
+                inputMode="numeric"
+                placeholder="Ex.: 45000"
+                value={f.odometro}
+                onChange={(e) => setF((p) => ({ ...p, odometro: e.target.value }))}
+                className="numeral"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leitura no cadastro — marca o início da vida operacional do veículo.
+              </p>
             </div>
           </div>
 

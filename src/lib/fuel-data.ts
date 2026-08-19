@@ -9,6 +9,8 @@ export type Vehicle = {
   tanque: number;
   /** Leitura atual do hodômetro (manual ou via GPS). null = nunca informada. */
   odometroAtual?: number | null;
+  /** Hodômetro no cadastro — início da vida operacional. */
+  odometroInicial?: number | null;
 };
 
 export type Refuel = {
@@ -21,6 +23,18 @@ export type Refuel = {
   combustivel: FuelType;
   tanqueCheio: boolean;
   posto: string;
+  /** Valor total pago (âncora); preço/litro = valorTotal / litros. */
+  valorTotal?: number | null;
+  observacoes?: string | null;
+};
+
+/** Nível de confiança de uma medição de consumo. */
+export type Confianca = "alta" | "media" | "baixa";
+
+export const confiancaLabel: Record<Confianca, string> = {
+  alta: "Alta confiança",
+  media: "Média confiança",
+  baixa: "Baixa confiança",
 };
 
 export const vehicles: Vehicle[] = [
@@ -111,8 +125,31 @@ export const brl = (n: number) =>
 export const num = (n: number, d = 1) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+/** Gasto de um abastecimento (âncora valor_total, senão litros x preço). */
+const gastoDe = (r: Refuel) => (r.valorTotal != null ? r.valorTotal : r.litros * r.precoLitro);
+
+const dataCurta = (iso: string) =>
+  new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+
+/** Um intervalo de consumo medido, com a origem dos dados (rastreabilidade). */
+export type Intervalo = {
+  data: string;
+  km: number;
+  litros: number;
+  consumo: number; // km/l
+  preco: number; // preço/litro do fechamento
+  gasto: number; // gasto do intervalo
+  custoKm: number;
+  confianca: Confianca;
+  odoInicio: number;
+  odoFim: number;
+  ids: string[]; // abastecimentos que formaram a medição
+};
+
 export type Metrics = {
   consumoMedio: number;
+  consumoL100: number;
+  confianca: Confianca;
   melhorConsumo: number;
   piorConsumo: number;
   custoPorKm: number;
@@ -122,44 +159,110 @@ export type Metrics = {
   precoMedio: number;
   autonomia: number;
   gastoMensal: number;
-  serie: { data: string; consumo: number; preco: number; custoKm: number }[];
+  qtdAbastecimentos: number;
+  serie: { data: string; consumo: number; preco: number; custoKm: number; confianca: Confianca }[];
   porMes: { mes: string; gasto: number; litros: number }[];
   tendencia: number;
+  intervalos: Intervalo[];
 };
 
+/**
+ * Métricas derivadas dos eventos de abastecimento.
+ *
+ * Consumo de ALTA confiança: intervalo tanque-cheio → tanque-cheio, somando os
+ * litros de todos os abastecimentos do intervalo (inclui parciais). Se não
+ * houver dois tanques cheios, cai para uma estimativa por pares consecutivos,
+ * marcada como MÉDIA confiança. Sem trecho válido → null.
+ */
 export function computeMetrics(list: Refuel[], tanque: number): Metrics | null {
-  const rows = [...list].sort((a, b) => a.odometro - b.odometro);
+  const rows = [...list].sort((a, b) => a.odometro - b.odometro || a.data.localeCompare(b.data));
   if (rows.length < 2) return null;
 
-  const serie: Metrics["serie"] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const cur = rows[i]!;
-    const prev = rows[i - 1]!;
-    const dist = cur.odometro - prev.odometro;
-    if (dist <= 0) continue;
-    const consumo = dist / cur.litros;
-    serie.push({
-      data: new Date(cur.data + "T00:00:00").toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "short",
-      }),
-      consumo: Number(consumo.toFixed(2)),
-      preco: cur.precoLitro,
-      custoKm: Number(((cur.litros * cur.precoLitro) / dist).toFixed(3)),
-    });
+  const gastoTotal = rows.reduce((s, r) => s + gastoDe(r), 0);
+  const litrosTotal = rows.reduce((s, r) => s + r.litros, 0);
+  const precoMedio = litrosTotal > 0 ? gastoTotal / litrosTotal : 0;
+  const kmRodados = rows[rows.length - 1]!.odometro - rows[0]!.odometro;
+
+  // ── Intervalos tanque-cheio → tanque-cheio (alta confiança) ──────────────
+  const alta: Intervalo[] = [];
+  let lastFull = -1;
+  let litrosAcum = 0;
+  let gastoAcum = 0;
+  let idsAcum: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    if (lastFull >= 0) {
+      litrosAcum += r.litros;
+      gastoAcum += gastoDe(r);
+      idsAcum.push(r.id);
+    }
+    if (r.tanqueCheio) {
+      if (lastFull >= 0) {
+        const ini = rows[lastFull]!;
+        const km = r.odometro - ini.odometro;
+        if (km > 0 && litrosAcum > 0) {
+          const consumo = km / litrosAcum;
+          alta.push({
+            data: dataCurta(r.data),
+            km,
+            litros: litrosAcum,
+            consumo: Number(consumo.toFixed(2)),
+            preco: r.precoLitro,
+            gasto: gastoAcum,
+            custoKm: Number((gastoAcum / km).toFixed(3)),
+            confianca: "alta",
+            odoInicio: ini.odometro,
+            odoFim: r.odometro,
+            ids: [ini.id, ...idsAcum],
+          });
+        }
+      }
+      lastFull = i;
+      litrosAcum = 0;
+      gastoAcum = 0;
+      idsAcum = [];
+    }
   }
 
-  // Sem trecho válido (ex.: odômetros iguais/decrescentes após edição) não há
-  // como calcular consumo — evita Infinity/NaN nas métricas.
-  if (serie.length === 0) return null;
+  let intervalos: Intervalo[];
+  let confianca: Confianca;
+  if (alta.length > 0) {
+    intervalos = alta;
+    confianca = "alta";
+  } else {
+    // Sem par de tanque cheio: estimativa por pares consecutivos (média).
+    const rough: Intervalo[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const cur = rows[i]!;
+      const prev = rows[i - 1]!;
+      const km = cur.odometro - prev.odometro;
+      if (km <= 0 || cur.litros <= 0) continue;
+      const gasto = gastoDe(cur);
+      rough.push({
+        data: dataCurta(cur.data),
+        km,
+        litros: cur.litros,
+        consumo: Number((km / cur.litros).toFixed(2)),
+        preco: cur.precoLitro,
+        gasto,
+        custoKm: Number((gasto / km).toFixed(3)),
+        confianca: "media",
+        odoInicio: prev.odometro,
+        odoFim: cur.odometro,
+        ids: [prev.id, cur.id],
+      });
+    }
+    if (rough.length === 0) return null;
+    intervalos = rough;
+    confianca = "media";
+  }
 
-  const gastoTotal = rows.reduce((s, r) => s + r.litros * r.precoLitro, 0);
-  const litrosTotal = rows.reduce((s, r) => s + r.litros, 0);
-  const kmRodados = rows[rows.length - 1]!.odometro - rows[0]!.odometro;
-  const consumos = serie.map((s) => s.consumo);
-  const consumoMedio = kmRodados / rows.slice(1).reduce((s, r) => s + r.litros, 0);
+  const consumos = intervalos.map((x) => x.consumo);
+  const somaKm = intervalos.reduce((s, x) => s + x.km, 0);
+  const somaLitros = intervalos.reduce((s, x) => s + x.litros, 0);
+  const consumoMedio = somaLitros > 0 ? somaKm / somaLitros : 0;
 
-
+  // ── Agregados mensais ────────────────────────────────────────────────────
   const mapMes = new Map<string, { gasto: number; litros: number }>();
   for (const r of rows) {
     const key = new Date(r.data + "T00:00:00").toLocaleDateString("pt-BR", {
@@ -167,7 +270,7 @@ export function computeMetrics(list: Refuel[], tanque: number): Metrics | null {
       year: "2-digit",
     });
     const cur = mapMes.get(key) ?? { gasto: 0, litros: 0 };
-    cur.gasto += r.litros * r.precoLitro;
+    cur.gasto += gastoDe(r);
     cur.litros += r.litros;
     mapMes.set(key, cur);
   }
@@ -177,24 +280,36 @@ export function computeMetrics(list: Refuel[], tanque: number): Metrics | null {
     litros: Number(v.litros.toFixed(1)),
   }));
 
+  // ── Tendência (metade recente vs. metade antiga) ─────────────────────────
   const half = Math.floor(consumos.length / 2) || 1;
   const antigo = consumos.slice(0, half).reduce((a, b) => a + b, 0) / half;
-  const recente =
-    consumos.slice(-half).reduce((a, b) => a + b, 0) / consumos.slice(-half).length;
+  const recenteArr = consumos.slice(-half);
+  const recente = recenteArr.reduce((a, b) => a + b, 0) / recenteArr.length;
+  const tendencia = antigo > 0 ? ((recente - antigo) / antigo) * 100 : 0;
 
   return {
     consumoMedio,
+    consumoL100: consumoMedio > 0 ? 100 / consumoMedio : 0,
+    confianca,
     melhorConsumo: Math.max(...consumos),
     piorConsumo: Math.min(...consumos),
-    custoPorKm: gastoTotal / kmRodados,
+    custoPorKm: consumoMedio > 0 ? precoMedio / consumoMedio : 0,
     gastoTotal,
     litrosTotal,
     kmRodados,
-    precoMedio: gastoTotal / litrosTotal,
+    precoMedio,
     autonomia: consumoMedio * tanque,
-    gastoMensal: porMes.reduce((s, m) => s + m.gasto, 0) / porMes.length,
-    serie,
+    gastoMensal: porMes.length > 0 ? porMes.reduce((s, m) => s + m.gasto, 0) / porMes.length : 0,
+    qtdAbastecimentos: rows.length,
+    serie: intervalos.map((x) => ({
+      data: x.data,
+      consumo: x.consumo,
+      preco: x.preco,
+      custoKm: x.custoKm,
+      confianca: x.confianca,
+    })),
     porMes,
-    tendencia: ((recente - antigo) / antigo) * 100,
+    tendencia,
+    intervalos,
   };
 }

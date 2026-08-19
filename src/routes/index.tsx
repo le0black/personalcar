@@ -38,7 +38,14 @@ import {
   updateVehicle,
 } from "@/lib/db";
 
-import { brl, computeMetrics, num, type Refuel, type Vehicle } from "@/lib/fuel-data";
+import {
+  brl,
+  computeMetrics,
+  confiancaLabel,
+  num,
+  type Refuel,
+  type Vehicle,
+} from "@/lib/fuel-data";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -166,10 +173,19 @@ function Dashboard() {
         combustivel: r.combustivel,
         tanqueCheio: r.tanqueCheio,
         posto: r.posto,
+        valorTotal: r.valorTotal ?? null,
+        observacoes: r.observacoes ?? null,
       });
       setRefuels((prev) => [...prev, salvo]);
       setOdometros((p) => ({ ...p, [salvo.vehicleId]: salvo.odometro }));
-      toast.success("Abastecimento registrado.");
+
+      // Resumo pós-salvar, com o consumo do último intervalo se houver.
+      const valor = salvo.valorTotal ?? salvo.litros * salvo.precoLitro;
+      let desc = `${num(salvo.litros, 1)} L · ${brl(valor)} · ${brl(salvo.precoLitro)}/L · ${salvo.odometro.toLocaleString("pt-BR")} km`;
+      const lista = [...refuels, salvo].filter((x) => x.vehicleId === salvo.vehicleId);
+      const ult = computeMetrics(lista, vehicle?.tanque ?? 0)?.intervalos.at(-1);
+      if (ult) desc += `\nConsumo: ${num(ult.consumo, 2)} km/l · ${confiancaLabel[ult.confianca]}`;
+      toast.success("Abastecimento registrado", { description: desc });
       return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível salvar o abastecimento.");
@@ -412,7 +428,7 @@ function Dashboard() {
                   label="Consumo médio"
                   value={num(metrics.consumoMedio, 2)}
                   unit="km/l"
-                  hint={`melhor ${num(metrics.melhorConsumo, 1)} · pior ${num(metrics.piorConsumo, 1)}`}
+                  hint={`${confiancaLabel[metrics.confianca]} · ${num(metrics.consumoL100, 1)} L/100km`}
                   icon={Gauge}
                   tone="primary"
                 />

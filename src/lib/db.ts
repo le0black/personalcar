@@ -16,9 +16,10 @@ type VehicleRow = {
   ano: number;
   tanque: number;
   odometro_atual: number | null;
+  odometro_inicial: number | null;
 };
 
-const VEHICLE_COLS = "id, nome, placa, modelo, ano, tanque, odometro_atual";
+const VEHICLE_COLS = "id, nome, placa, modelo, ano, tanque, odometro_atual, odometro_inicial";
 
 type RefuelRow = {
   id: string;
@@ -30,7 +31,12 @@ type RefuelRow = {
   combustivel: string;
   tanque_cheio: boolean;
   posto: string;
+  valor_total: number | null;
+  observacoes: string | null;
 };
+
+const REFUEL_COLS =
+  "id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto, valor_total, observacoes";
 
 // ── Mapeamentos ───────────────────────────────────────────────────────────
 const toVehicle = (r: VehicleRow): Vehicle => ({
@@ -41,6 +47,7 @@ const toVehicle = (r: VehicleRow): Vehicle => ({
   ano: r.ano,
   tanque: Number(r.tanque),
   odometroAtual: r.odometro_atual === null ? null : Number(r.odometro_atual),
+  odometroInicial: r.odometro_inicial === null ? null : Number(r.odometro_inicial),
 });
 
 const toRefuel = (r: RefuelRow): Refuel => ({
@@ -53,6 +60,8 @@ const toRefuel = (r: RefuelRow): Refuel => ({
   combustivel: r.combustivel as FuelType,
   tanqueCheio: r.tanque_cheio,
   posto: r.posto,
+  valorTotal: r.valor_total === null ? null : Number(r.valor_total),
+  observacoes: r.observacoes,
 });
 
 // ── Veículos ──────────────────────────────────────────────────────────────
@@ -77,6 +86,9 @@ export async function insertVehicle(v: Omit<Vehicle, "id">): Promise<Vehicle> {
       modelo: v.modelo,
       ano: v.ano,
       tanque: v.tanque,
+      odometro_inicial: v.odometroInicial ?? null,
+      // Odômetro atual começa no inicial (base da vida operacional).
+      odometro_atual: v.odometroAtual ?? v.odometroInicial ?? null,
     })
     .select(VEHICLE_COLS)
     .single();
@@ -97,6 +109,7 @@ export async function updateVehicle(
   if (v.ano !== undefined) patch["ano"] = v.ano;
   if (v.tanque !== undefined) patch["tanque"] = v.tanque;
   if (v.odometroAtual !== undefined) patch["odometro_atual"] = v.odometroAtual;
+  if (v.odometroInicial !== undefined) patch["odometro_inicial"] = v.odometroInicial;
   const { data, error } = await sb
     .from("vehicles")
     .update(patch)
@@ -132,7 +145,7 @@ export async function fetchRefuels(): Promise<Refuel[]> {
   const sb = requireSupabase();
   const { data, error } = await sb
     .from("refuels")
-    .select("id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto")
+    .select(REFUEL_COLS)
     .order("odometro", { ascending: true });
   if (error) throw error;
   return (data as RefuelRow[]).map(toRefuel);
@@ -152,20 +165,22 @@ export async function insertRefuel(r: Omit<Refuel, "id">): Promise<Refuel> {
       combustivel: r.combustivel,
       tanque_cheio: r.tanqueCheio,
       posto: r.posto,
+      valor_total: r.valorTotal ?? null,
+      observacoes: r.observacoes ?? null,
     })
-    .select("id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto")
+    .select(REFUEL_COLS)
     .single();
   if (error) throw error;
   return toRefuel(data as RefuelRow);
 }
 
-/** Atualiza campos editáveis de um abastecimento. */
+/** Atualiza campos editáveis de um abastecimento (marca updated_at). */
 export async function updateRefuel(
   id: string,
   r: Partial<Omit<Refuel, "id" | "vehicleId">>,
 ): Promise<Refuel> {
   const sb = requireSupabase();
-  const patch: Record<string, unknown> = {};
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (r.data !== undefined) patch["data"] = r.data;
   if (r.odometro !== undefined) patch["odometro"] = r.odometro;
   if (r.litros !== undefined) patch["litros"] = r.litros;
@@ -173,11 +188,13 @@ export async function updateRefuel(
   if (r.combustivel !== undefined) patch["combustivel"] = r.combustivel;
   if (r.tanqueCheio !== undefined) patch["tanque_cheio"] = r.tanqueCheio;
   if (r.posto !== undefined) patch["posto"] = r.posto;
+  if (r.valorTotal !== undefined) patch["valor_total"] = r.valorTotal;
+  if (r.observacoes !== undefined) patch["observacoes"] = r.observacoes;
   const { data, error } = await sb
     .from("refuels")
     .update(patch)
     .eq("id", id)
-    .select("id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto")
+    .select(REFUEL_COLS)
     .single();
   if (error) throw error;
   return toRefuel(data as RefuelRow);
