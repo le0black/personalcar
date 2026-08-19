@@ -558,6 +558,9 @@ function Dashboard() {
               <RefuelForm
                 vehicleId={vehicle.id}
                 ultimoOdometro={ultimoOdometro}
+                refuels={doVeiculo}
+                tanque={vehicle.tanque}
+                consumoMedio={metrics?.consumoMedio}
                 onAdd={adicionarAbastecimento}
               />
             </div>

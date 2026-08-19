@@ -11,11 +11,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { dataLocalISO, parseNumero, type FuelType, type Refuel } from "@/lib/fuel-data";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  dataLocalISO,
+  detectarAnomalias,
+  parseNumero,
+  type FuelType,
+  type Refuel,
+} from "@/lib/fuel-data";
 
 type Props = {
   vehicleId: string;
   ultimoOdometro: number;
+  /** Abastecimentos do veículo (para detectar anomalias). */
+  refuels: Refuel[];
+  tanque: number;
+  consumoMedio?: number | null | undefined;
   /** Retorna true se salvou com sucesso (aí o formulário é limpo). */
   onAdd: (r: Refuel) => Promise<boolean> | boolean;
 };
@@ -24,7 +44,14 @@ type Props = {
 const fmt = (n: number, d: number) =>
   Number.isFinite(n) ? Number(n.toFixed(d)).toString().replace(".", ",") : "";
 
-export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
+export function RefuelForm({
+  vehicleId,
+  ultimoOdometro,
+  refuels,
+  tanque,
+  consumoMedio,
+  onAdd,
+}: Props) {
   const [data, setData] = useState(dataLocalISO());
   const [odometro, setOdometro] = useState("");
   const [litros, setLitros] = useState("");
@@ -36,6 +63,8 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
   const [observacoes, setObservacoes] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [avisos, setAvisos] = useState<string[]>([]);
+  const [pendente, setPendente] = useState<Refuel | null>(null);
 
   // Preenchimento automático do trio litros / valor / preço.
   function onLitros(v: string) {
@@ -59,7 +88,7 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
     if (l > 0 && pr > 0) setValor(fmt(l * pr, 2));
   }
 
-  async function submit(e: React.FormEvent) {
+  function submit(e: React.FormEvent) {
     e.preventDefault();
     if (enviando) return;
     const odo = parseNumero(odometro);
@@ -77,23 +106,36 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
     // Deriva o que faltar (valor total é a âncora).
     if (val > 0) pr = val / l;
     else val = l * pr;
-
     setErro(null);
+
+    const payload: Refuel = {
+      id: `${vehicleId}-${Date.now()}`,
+      vehicleId,
+      data,
+      odometro: odo,
+      litros: l,
+      precoLitro: Number(pr.toFixed(3)),
+      valorTotal: Number(val.toFixed(2)),
+      combustivel,
+      tanqueCheio,
+      posto: posto.trim() || "Não informado",
+      observacoes: observacoes.trim() || null,
+    };
+
+    // Anomalias não bloqueiam — pedem confirmação.
+    const problemas = detectarAnomalias({ novo: payload, refuels, tanque, consumoMedio });
+    if (problemas.length > 0) {
+      setAvisos(problemas);
+      setPendente(payload);
+      return;
+    }
+    void doSave(payload);
+  }
+
+  async function doSave(payload: Refuel) {
     setEnviando(true);
     try {
-      const ok = await onAdd({
-        id: `${vehicleId}-${Date.now()}`,
-        vehicleId,
-        data,
-        odometro: odo,
-        litros: l,
-        precoLitro: Number(pr.toFixed(3)),
-        valorTotal: Number(val.toFixed(2)),
-        combustivel,
-        tanqueCheio,
-        posto: posto.trim() || "Não informado",
-        observacoes: observacoes.trim() || null,
-      });
+      const ok = await onAdd(payload);
       if (ok) {
         setData(dataLocalISO());
         setOdometro("");
@@ -220,6 +262,43 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
       <Button type="submit" className="mt-5 w-full font-semibold" disabled={enviando}>
         {enviando ? "Salvando…" : "Salvar abastecimento"}
       </Button>
+
+      <AlertDialog
+        open={pendente !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPendente(null);
+            setAvisos([]);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar este abastecimento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Encontramos algo incomum. Revise ou confirme mesmo assim.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-warning">
+            {avisos.map((a, i) => (
+              <li key={i}>{a}</li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Revisar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const p = pendente;
+                setPendente(null);
+                setAvisos([]);
+                if (p) void doSave(p);
+              }}
+            >
+              Confirmar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

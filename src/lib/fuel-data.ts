@@ -377,3 +377,77 @@ export function estimarCombustivel(args: {
 
   return { litrosAbastecidos, litrosConsumidos, restante, pctTanque, confianca };
 }
+
+/**
+ * Detecta situações incomuns em um abastecimento e devolve avisos (não bloqueia).
+ * O bloqueio duro (hodômetro ≤ anterior) fica no formulário. Aqui é só alerta
+ * para o usuário confirmar. `consumoMedio` é a média histórica (km/l).
+ */
+export function detectarAnomalias(args: {
+  novo: Pick<Refuel, "odometro" | "litros" | "precoLitro" | "valorTotal" | "data">;
+  refuels: Refuel[];
+  tanque: number;
+  consumoMedio?: number | null | undefined;
+}): string[] {
+  const { novo, refuels, tanque, consumoMedio } = args;
+  const avisos: string[] = [];
+
+  // Litros acima da capacidade do tanque.
+  if (tanque > 0 && novo.litros > tanque) {
+    avisos.push(
+      `Litros abastecidos (${num(novo.litros, 1)} L) acima da capacidade do tanque (${num(tanque, 0)} L).`,
+    );
+  }
+
+  // Valor total incompatível com litros × preço/litro.
+  const esperado = novo.litros * novo.precoLitro;
+  if (novo.valorTotal != null && esperado > 0) {
+    const tolerancia = Math.max(0.5, esperado * 0.02);
+    if (Math.abs(novo.valorTotal - esperado) > tolerancia) {
+      avisos.push(
+        `Valor total (${brl(novo.valorTotal)}) diverge de litros × preço (${brl(esperado)}).`,
+      );
+    }
+  }
+
+  const ordenados = [...refuels].sort((a, b) => b.odometro - a.odometro);
+  const ultimo = ordenados[0];
+
+  // Consumo do trecho muito diferente da média.
+  if (consumoMedio && consumoMedio > 0 && ultimo && novo.litros > 0) {
+    const km = novo.odometro - ultimo.odometro;
+    if (km > 0) {
+      const c = km / novo.litros;
+      if (c > consumoMedio * 2) {
+        avisos.push(
+          `O consumo deste trecho (~${num(c, 1)} km/l) está muito acima da média (${num(consumoMedio, 1)} km/l).`,
+        );
+      } else if (c < consumoMedio * 0.5) {
+        avisos.push(
+          `O consumo deste trecho (~${num(c, 1)} km/l) está muito abaixo da média (${num(consumoMedio, 1)} km/l).`,
+        );
+      }
+    }
+  }
+
+  // Possível duplicado.
+  if (refuels.some((r) => r.odometro === novo.odometro)) {
+    avisos.push("Já existe um abastecimento com esse hodômetro.");
+  } else if (
+    refuels.some((r) => r.data === novo.data && Math.abs(r.litros - novo.litros) < 0.1)
+  ) {
+    avisos.push("Parece um abastecimento duplicado (mesma data e litros de outro registro).");
+  }
+
+  // Data inconsistente.
+  if (novo.data > dataLocalISO()) {
+    avisos.push("A data informada está no futuro.");
+  }
+  if (ultimo && novo.data < ultimo.data) {
+    avisos.push(
+      `A data é anterior ao último abastecimento (${new Date(ultimo.data + "T00:00:00").toLocaleDateString("pt-BR")}), mas o hodômetro é maior.`,
+    );
+  }
+
+  return avisos;
+}
