@@ -23,6 +23,7 @@ import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import { OdometerPanel } from "@/components/fuel/OdometerPanel";
 import { FuelCard } from "@/components/fuel/FuelCard";
 import { Timeline } from "@/components/fuel/Timeline";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getConsumoByModeloCompleto, getTipoByModeloCompleto } from "@/lib/vehicle-database";
 import {
   ConsumoChart,
@@ -444,127 +445,138 @@ function Dashboard() {
             />
           </div>
 
-          {estado ? (
-            <div className="mt-4">
-              <FuelCard
-                ultimo={doVeiculo[0] ?? null}
-                metrics={metrics}
-                estado={estado}
-                tanque={vehicle.tanque}
-              />
-            </div>
-          ) : null}
+          <Tabs defaultValue="visao" className="mt-6">
+            <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:inline-grid">
+              <TabsTrigger value="visao">Visão geral</TabsTrigger>
+              <TabsTrigger value="historico">Histórico</TabsTrigger>
+              <TabsTrigger value="graficos">Gráficos</TabsTrigger>
+            </TabsList>
 
-          {metrics ? (
-            <>
-              <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricCard
-                  label="Consumo médio"
-                  value={num(metrics.consumoMedio, 2)}
-                  unit="km/l"
-                  hint={`${confiancaLabel[metrics.confianca]} · ${num(metrics.consumoL100, 1)} L/100km`}
-                  icon={Gauge}
-                  tone="primary"
-                />
-                <MetricCard
-                  label="Custo por km"
-                  value={brl(metrics.custoPorKm)}
-                  hint={`preço médio ${brl(metrics.precoMedio)}/l`}
-                  icon={Wallet}
-                />
-                <MetricCard
-                  label="Gasto mensal"
-                  value={brl(metrics.gastoMensal)}
-                  hint={`total ${brl(metrics.gastoTotal)}`}
-                  icon={Droplets}
-                />
-                <MetricCard
-                  label="Autonomia estimada"
-                  value={num(metrics.autonomia, 0)}
-                  unit="km"
-                  hint={`${num(metrics.kmRodados, 0)} km monitorados`}
-                  icon={RouteIcon}
-                  tone="success"
-                />
-              </section>
-
-              <section className="mt-6 grid gap-4 lg:grid-cols-2">
-                <ConsumoChart serie={metrics.serie} media={metrics.consumoMedio} />
-                <GastoChart porMes={metrics.porMes} />
-              </section>
-
-              <section className="mt-4 grid gap-4 lg:grid-cols-2">
-                <LitrosChart porMes={metrics.porMes} />
-                <PrecoChart serie={metrics.serie} />
-              </section>
-
-              <section className="mt-4">
-                <CustoKmChart serie={metrics.serie} />
-              </section>
-
-              <section className="mt-6">
-                <Timeline intervalos={metrics.intervalos} refuels={doVeiculo} />
-              </section>
-            </>
-          ) : (
-            <p className="panel mt-6 p-6 text-sm text-muted-foreground">
-              Registre pelo menos dois abastecimentos com tanque cheio para ver as métricas.
-            </p>
-          )}
-
-          <section className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="panel overflow-hidden">
-              <div className="border-b border-border p-5">
-                <h3 className="font-display text-lg font-semibold">Histórico</h3>
-                <p className="text-xs text-muted-foreground">
-                  {doVeiculo.length} abastecimentos registrados
-                </p>
-              </div>
-              {doVeiculo.length === 0 ? (
-                <p className="p-5 text-sm text-muted-foreground">
-                  Nenhum abastecimento ainda. Registre o primeiro ao lado.
-                </p>
-              ) : (
-                <ul className="max-h-[520px] divide-y divide-border overflow-y-auto">
-                  {doVeiculo.map((r) => (
-                    <RefuelItem
-                      key={r.id}
-                      refuel={r}
-                      onSave={(patch) => editarAbastecimento(r.id, patch)}
-                      onDelete={() => excluirAbastecimento(r.id)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="grid gap-4">
-              {metrics ? (
-                <ReminderPanel
-                  odometroAtual={odometroAtual}
-                  onOdometroChange={(v) => setOdometros((p) => ({ ...p, [chave]: v }))}
-                  ultimoOdometro={ultimoOdometro}
-                  limiteKm={limiteKm}
-                  onLimiteChange={(v) => setLimites((p) => ({ ...p, [chave]: v }))}
-                  ativo={lembreteAtivo}
-                  onAtivoChange={(v) => setLembretes((p) => ({ ...p, [chave]: v }))}
-                  status={status}
-                  autonomia={metrics.autonomia}
-                  precoMedio={metrics.precoMedio}
+            {/* Visão geral */}
+            <TabsContent value="visao" className="mt-4 space-y-4">
+              {estado ? (
+                <FuelCard
+                  ultimo={doVeiculo[0] ?? null}
+                  metrics={metrics}
+                  estado={estado}
                   tanque={vehicle.tanque}
                 />
               ) : null}
 
-              <RefuelForm
-                vehicleId={vehicle.id}
-                ultimoOdometro={ultimoOdometro}
-                refuels={doVeiculo}
-                tanque={vehicle.tanque}
-                consumoMedio={metrics?.consumoMedio}
-                onAdd={adicionarAbastecimento}
-              />
-            </div>
-          </section>
+              {metrics ? (
+                <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <MetricCard
+                    label="Consumo médio"
+                    value={num(metrics.consumoMedio, 2)}
+                    unit="km/l"
+                    hint={`${confiancaLabel[metrics.confianca]} · ${num(metrics.consumoL100, 1)} L/100km`}
+                    icon={Gauge}
+                    tone="primary"
+                  />
+                  <MetricCard
+                    label="Custo por km"
+                    value={brl(metrics.custoPorKm)}
+                    hint={`preço médio ${brl(metrics.precoMedio)}/l`}
+                    icon={Wallet}
+                  />
+                  <MetricCard
+                    label="Gasto mensal"
+                    value={brl(metrics.gastoMensal)}
+                    hint={`total ${brl(metrics.gastoTotal)}`}
+                    icon={Droplets}
+                  />
+                  <MetricCard
+                    label="Autonomia estimada"
+                    value={num(metrics.autonomia, 0)}
+                    unit="km"
+                    hint={`${num(metrics.kmRodados, 0)} km monitorados`}
+                    icon={RouteIcon}
+                    tone="success"
+                  />
+                </section>
+              ) : (
+                <p className="panel p-6 text-sm text-muted-foreground">
+                  Registre pelo menos dois abastecimentos com tanque cheio para ver as métricas.
+                </p>
+              )}
+
+              <section className="grid gap-4 lg:grid-cols-2">
+                <RefuelForm
+                  vehicleId={vehicle.id}
+                  ultimoOdometro={ultimoOdometro}
+                  refuels={doVeiculo}
+                  tanque={vehicle.tanque}
+                  consumoMedio={metrics?.consumoMedio}
+                  onAdd={adicionarAbastecimento}
+                />
+                {metrics ? (
+                  <ReminderPanel
+                    odometroAtual={odometroAtual}
+                    onOdometroChange={(v) => setOdometros((p) => ({ ...p, [chave]: v }))}
+                    ultimoOdometro={ultimoOdometro}
+                    limiteKm={limiteKm}
+                    onLimiteChange={(v) => setLimites((p) => ({ ...p, [chave]: v }))}
+                    ativo={lembreteAtivo}
+                    onAtivoChange={(v) => setLembretes((p) => ({ ...p, [chave]: v }))}
+                    status={status}
+                    autonomia={metrics.autonomia}
+                    precoMedio={metrics.precoMedio}
+                    tanque={vehicle.tanque}
+                  />
+                ) : null}
+              </section>
+            </TabsContent>
+
+            {/* Histórico */}
+            <TabsContent value="historico" className="mt-4 space-y-4">
+              <div className="panel overflow-hidden">
+                <div className="border-b border-border p-5">
+                  <h3 className="font-display text-lg font-semibold">Histórico</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {doVeiculo.length} abastecimentos registrados
+                  </p>
+                </div>
+                {doVeiculo.length === 0 ? (
+                  <p className="p-5 text-sm text-muted-foreground">
+                    Nenhum abastecimento ainda. Registre o primeiro na aba Visão geral.
+                  </p>
+                ) : (
+                  <ul className="max-h-[560px] divide-y divide-border overflow-y-auto">
+                    {doVeiculo.map((r) => (
+                      <RefuelItem
+                        key={r.id}
+                        refuel={r}
+                        onSave={(patch) => editarAbastecimento(r.id, patch)}
+                        onDelete={() => excluirAbastecimento(r.id)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <Timeline intervalos={metrics?.intervalos ?? []} refuels={doVeiculo} />
+            </TabsContent>
+
+            {/* Gráficos */}
+            <TabsContent value="graficos" className="mt-4">
+              {metrics ? (
+                <div className="space-y-4">
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    <ConsumoChart serie={metrics.serie} media={metrics.consumoMedio} />
+                    <GastoChart porMes={metrics.porMes} />
+                  </section>
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    <LitrosChart porMes={metrics.porMes} />
+                    <PrecoChart serie={metrics.serie} />
+                  </section>
+                  <CustoKmChart serie={metrics.serie} />
+                </div>
+              ) : (
+                <p className="panel p-6 text-sm text-muted-foreground">
+                  Registre pelo menos dois abastecimentos com tanque cheio para ver os gráficos.
+                </p>
+              )}
+            </TabsContent>
+          </Tabs>
         </>
       )}
 
