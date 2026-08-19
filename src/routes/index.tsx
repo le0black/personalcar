@@ -135,7 +135,7 @@ function Dashboard() {
   );
   const alertando = Boolean(metrics) && lembreteAtivo && status.nivel !== "ok";
 
-  async function adicionarVeiculo(v: Vehicle) {
+  async function adicionarVeiculo(v: Vehicle): Promise<boolean> {
     try {
       // O id vindo do form é descartado; o banco gera o definitivo.
       const salvo = await insertVehicle({
@@ -148,12 +148,14 @@ function Dashboard() {
       setVehicles((prev) => [...prev, salvo]);
       setVehicleId(salvo.id);
       toast.success("Veículo adicionado.");
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível salvar o veículo.");
+      return false;
     }
   }
 
-  async function adicionarAbastecimento(r: Refuel) {
+  async function adicionarAbastecimento(r: Refuel): Promise<boolean> {
     try {
       const salvo = await insertRefuel({
         vehicleId: r.vehicleId,
@@ -168,8 +170,10 @@ function Dashboard() {
       setRefuels((prev) => [...prev, salvo]);
       setOdometros((p) => ({ ...p, [salvo.vehicleId]: salvo.odometro }));
       toast.success("Abastecimento registrado.");
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível salvar o abastecimento.");
+      return false;
     }
   }
 
@@ -353,8 +357,7 @@ function Dashboard() {
                   {vehicle.modelo} · {vehicle.ano}
                 </p>
                 <p className="numeral mt-1 text-sm text-muted-foreground">
-                  {vehicle.placa} · tanque {vehicle.tanque} L · odômetro{" "}
-                  {ultimoOdometro.toLocaleString("pt-BR")} km
+                  {vehicle.placa} · tanque {vehicle.tanque} L
                 </p>
                 {consumoRef ? (
                   <p className="numeral mt-1 text-xs text-muted-foreground">

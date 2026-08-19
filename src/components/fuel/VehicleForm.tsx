@@ -32,7 +32,8 @@ import {
 } from "@/lib/vehicle-database";
 
 type Props = {
-  onAdd: (v: Vehicle) => void;
+  /** Retorna true se salvou com sucesso (aí o modal fecha e reseta). */
+  onAdd: (v: Vehicle) => Promise<boolean> | boolean;
 };
 
 const emptyState = {
@@ -49,6 +50,7 @@ export function VehicleForm({ onAdd }: Props) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState(emptyState);
   const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   const marcas = useMemo(() => getMarcas(f.categoria), [f.categoria]);
   const modelos = useMemo(
@@ -95,8 +97,9 @@ export function VehicleForm({ onAdd }: Props) {
     }));
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (enviando) return;
     if (!f.marca || !f.modelo || !f.ano) {
       return setErro("Selecione marca, modelo e ano.");
     }
@@ -105,16 +108,24 @@ export function VehicleForm({ onAdd }: Props) {
       return setErro("Informe a capacidade do tanque (litros).");
     }
     setErro(null);
-    onAdd({
-      id: `v-${Date.now()}`,
-      nome: f.nome.trim() || f.modelo,
-      placa: f.placa.trim().toUpperCase() || "Sem placa",
-      modelo: `${f.marca} ${f.modelo}`,
-      ano: Number(f.ano),
-      tanque,
-    });
-    reset();
-    setOpen(false);
+    setEnviando(true);
+    try {
+      const ok = await onAdd({
+        id: `v-${Date.now()}`,
+        nome: f.nome.trim() || f.modelo,
+        placa: f.placa.trim().toUpperCase() || "Sem placa",
+        modelo: `${f.marca} ${f.modelo}`,
+        ano: Number(f.ano),
+        tanque,
+      });
+      // Só fecha/reseta se salvou; numa falha mantém os dados preenchidos.
+      if (ok) {
+        reset();
+        setOpen(false);
+      }
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
@@ -278,8 +289,8 @@ export function VehicleForm({ onAdd }: Props) {
 
           {erro ? <p className="text-sm text-destructive">{erro}</p> : null}
 
-          <Button type="submit" className="w-full font-semibold">
-            Adicionar veículo
+          <Button type="submit" className="w-full font-semibold" disabled={enviando}>
+            {enviando ? "Salvando…" : "Adicionar veículo"}
           </Button>
         </form>
       </DialogContent>

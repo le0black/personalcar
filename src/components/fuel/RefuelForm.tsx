@@ -9,12 +9,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { parseNumero, type FuelType, type Refuel } from "@/lib/fuel-data";
+import { dataLocalISO, parseNumero, type FuelType, type Refuel } from "@/lib/fuel-data";
 
 type Props = {
   vehicleId: string;
   ultimoOdometro: number;
-  onAdd: (r: Refuel) => void;
+  /** Retorna true se salvou com sucesso (aí o formulário é limpo). */
+  onAdd: (r: Refuel) => Promise<boolean> | boolean;
 };
 
 export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
@@ -24,9 +25,11 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
   const [posto, setPosto] = useState("");
   const [combustivel, setCombustivel] = useState<FuelType>("Gasolina");
   const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (enviando) return;
     const odo = parseNumero(odometro);
     const l = parseNumero(litros);
     const p = parseNumero(preco);
@@ -34,21 +37,29 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
     if (odo <= ultimoOdometro)
       return setErro(`O odômetro deve ser maior que ${ultimoOdometro.toLocaleString("pt-BR")} km.`);
     setErro(null);
-    onAdd({
-      id: `${vehicleId}-${Date.now()}`,
-      vehicleId,
-      data: new Date().toISOString().slice(0, 10),
-      odometro: odo,
-      litros: l,
-      precoLitro: p,
-      combustivel,
-      tanqueCheio: true,
-      posto: posto || "Não informado",
-    });
-    setOdometro("");
-    setLitros("");
-    setPreco("");
-    setPosto("");
+    setEnviando(true);
+    try {
+      const ok = await onAdd({
+        id: `${vehicleId}-${Date.now()}`,
+        vehicleId,
+        data: dataLocalISO(),
+        odometro: odo,
+        litros: l,
+        precoLitro: p,
+        combustivel,
+        tanqueCheio: true,
+        posto: posto || "Não informado",
+      });
+      // Só limpa se salvou — assim não se perde o que foi digitado numa falha.
+      if (ok) {
+        setOdometro("");
+        setLitros("");
+        setPreco("");
+        setPosto("");
+      }
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
@@ -120,8 +131,8 @@ export function RefuelForm({ vehicleId, ultimoOdometro, onAdd }: Props) {
 
       {erro ? <p className="mt-3 text-sm text-destructive">{erro}</p> : null}
 
-      <Button type="submit" className="mt-5 w-full font-semibold">
-        Salvar abastecimento
+      <Button type="submit" className="mt-5 w-full font-semibold" disabled={enviando}>
+        {enviando ? "Salvando…" : "Salvar abastecimento"}
       </Button>
     </form>
   );

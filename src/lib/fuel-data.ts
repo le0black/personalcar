@@ -93,6 +93,18 @@ export function parseNumero(v: string): number {
   return Number(s);
 }
 
+/**
+ * Data de hoje no fuso LOCAL no formato yyyy-mm-dd.
+ * Evita o bug de usar toISOString() (UTC), que à noite no Brasil (UTC-3)
+ * registra o dia seguinte.
+ */
+export function dataLocalISO(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dia}`;
+}
+
 export const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -136,6 +148,10 @@ export function computeMetrics(list: Refuel[], tanque: number): Metrics | null {
       custoKm: Number(((cur.litros * cur.precoLitro) / dist).toFixed(3)),
     });
   }
+
+  // Sem trecho válido (ex.: odômetros iguais/decrescentes após edição) não há
+  // como calcular consumo — evita Infinity/NaN nas métricas.
+  if (serie.length === 0) return null;
 
   const gastoTotal = rows.reduce((s, r) => s + r.litros * r.precoLitro, 0);
   const litrosTotal = rows.reduce((s, r) => s + r.litros, 0);
