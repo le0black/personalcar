@@ -1,5 +1,4 @@
-import { Droplets, Fuel, HelpCircle } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
+import { Droplets, Fuel } from "lucide-react";
 import {
   brl,
   confiancaLabel,
@@ -13,55 +12,14 @@ type Props = {
   ultimo: Refuel | null;
   metrics: Metrics | null;
   estado: EstadoCombustivel;
-  tanque: number;
 };
 
-export function FuelCard({ ultimo, metrics, estado, tanque }: Props) {
-  const temRestante = estado.restante != null && estado.pctTanque != null;
-
+export function FuelCard({ ultimo, metrics, estado }: Props) {
   return (
     <section className="panel p-5">
       <div className="flex items-center gap-2">
         <Fuel className="size-4 shrink-0 text-primary" />
-        <h3 className="font-display text-lg font-semibold">Combustível</h3>
-      </div>
-
-      {/* Estado estimado do tanque */}
-      <div className="mt-4 rounded-xl border border-border bg-card/50 p-4">
-        {temRestante ? (
-          <>
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                  Combustível restante (estimado)
-                </p>
-                <p className="numeral mt-1 font-display text-2xl font-bold">
-                  {num(estado.restante!, 1)} L
-                  <span className="ml-2 text-base font-medium text-muted-foreground">
-                    ~{estado.pctTanque}% de {num(tanque, 0)} L
-                  </span>
-                </p>
-              </div>
-              {estado.confianca ? (
-                <span className="shrink-0 rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
-                  {confiancaLabel[estado.confianca]}
-                </span>
-              ) : null}
-            </div>
-            <Progress value={estado.pctTanque!} className="mt-3 h-2" />
-          </>
-        ) : (
-          <div className="flex items-start gap-3">
-            <HelpCircle className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-            <div className="min-w-0">
-              <p className="font-medium">Combustível restante não determinado</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Precisa de um abastecimento com tanque cheio, um consumo estimado e o odômetro
-                atual para calcular com segurança.
-              </p>
-            </div>
-          </div>
-        )}
+        <h3 className="font-display text-lg font-semibold">Resumo de combustível</h3>
       </div>
 
       {/* Último abastecimento */}

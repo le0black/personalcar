@@ -45,6 +45,7 @@ const emptyState = {
   placa: "",
   tanque: "",
   odometro: "",
+  reserva: "",
 };
 
 export function VehicleForm({ onAdd }: Props) {
@@ -112,6 +113,7 @@ export function VehicleForm({ onAdd }: Props) {
     setEnviando(true);
     try {
       const odo = parseNumero(f.odometro);
+      const reserva = parseNumero(f.reserva);
       const ok = await onAdd({
         id: `v-${Date.now()}`,
         nome: f.nome.trim() || f.modelo,
@@ -120,6 +122,7 @@ export function VehicleForm({ onAdd }: Props) {
         ano: Number(f.ano),
         tanque,
         odometroInicial: odo > 0 ? odo : null,
+        reservaLitros: reserva > 0 ? reserva : null,
       });
       // Só fecha/reseta se salvou; numa falha mantém os dados preenchidos.
       if (ok) {
@@ -302,6 +305,22 @@ export function VehicleForm({ onAdd }: Props) {
               />
               <p className="text-xs text-muted-foreground">
                 Leitura no cadastro — marca o início da vida operacional do veículo.
+              </p>
+            </div>
+
+            {/* Reserva */}
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="reserva">Reserva (L) — opcional</Label>
+              <Input
+                id="reserva"
+                inputMode="numeric"
+                placeholder="Ex.: 7"
+                value={f.reserva}
+                onChange={(e) => setF((p) => ({ ...p, reserva: e.target.value }))}
+                className="numeral"
+              />
+              <p className="text-xs text-muted-foreground">
+                Litros a partir dos quais o medidor virtual avisa que está na reserva.
               </p>
             </div>
           </div>

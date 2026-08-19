@@ -26,7 +26,9 @@ import { parseNumero, type Vehicle } from "@/lib/fuel-data";
 
 type Props = {
   vehicle: Vehicle;
-  onSave: (patch: Pick<Vehicle, "nome" | "placa" | "tanque">) => void | Promise<void>;
+  onSave: (
+    patch: Pick<Vehicle, "nome" | "placa" | "tanque" | "reservaLitros">,
+  ) => void | Promise<void>;
   onDelete: () => void | Promise<void>;
 };
 
@@ -35,6 +37,7 @@ export function VehicleEditDialog({ vehicle, onSave, onDelete }: Props) {
   const [nome, setNome] = useState(vehicle.nome);
   const [placa, setPlaca] = useState(vehicle.placa);
   const [tanque, setTanque] = useState(String(vehicle.tanque));
+  const [reserva, setReserva] = useState(String(vehicle.reservaLitros ?? ""));
   const [erro, setErro] = useState<string | null>(null);
 
   // Recarrega os campos ao (re)abrir, caso o veículo tenha mudado.
@@ -43,6 +46,7 @@ export function VehicleEditDialog({ vehicle, onSave, onDelete }: Props) {
       setNome(vehicle.nome);
       setPlaca(vehicle.placa);
       setTanque(String(vehicle.tanque));
+      setReserva(String(vehicle.reservaLitros ?? ""));
       setErro(null);
     }
     setOpen(o);
@@ -52,11 +56,13 @@ export function VehicleEditDialog({ vehicle, onSave, onDelete }: Props) {
     e.preventDefault();
     const t = parseNumero(tanque);
     if (!t || t <= 0) return setErro("Informe a capacidade do tanque (litros).");
+    const r = parseNumero(reserva);
     setErro(null);
     await onSave({
       nome: nome.trim() || vehicle.nome,
       placa: placa.trim().toUpperCase() || "Sem placa",
       tanque: t,
+      reservaLitros: r > 0 ? r : null,
     });
     setOpen(false);
   }
@@ -108,6 +114,17 @@ export function VehicleEditDialog({ vehicle, onSave, onDelete }: Props) {
                 inputMode="numeric"
                 value={tanque}
                 onChange={(e) => setTanque(e.target.value)}
+                className="numeral"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-reserva">Reserva (L)</Label>
+              <Input
+                id="edit-reserva"
+                inputMode="numeric"
+                placeholder="Ex.: 7"
+                value={reserva}
+                onChange={(e) => setReserva(e.target.value)}
                 className="numeral"
               />
             </div>

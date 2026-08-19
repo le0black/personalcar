@@ -11,6 +11,8 @@ export type Vehicle = {
   odometroAtual?: number | null;
   /** Hodômetro no cadastro — início da vida operacional. */
   odometroInicial?: number | null;
+  /** Reserva de combustível (litros) para alertas do medidor virtual. */
+  reservaLitros?: number | null;
 };
 
 export type Refuel = {
@@ -376,6 +378,175 @@ export function estimarCombustivel(args: {
   }
 
   return { litrosAbastecidos, litrosConsumidos, restante, pctTanque, confianca };
+}
+
+// ── Medidor virtual de combustível ─────────────────────────────────────────
+
+/**
+ * Pesos do consumo adaptativo (mais peso ao recente). Ajustáveis aqui.
+ * O consumo usado = 50% dos mais recentes + 30% do histórico recente + 20% geral.
+ */
+export const PESOS_CONSUMO = { recentes: 0.5, recenteHist: 0.3, geral: 0.2 };
+const JANELA_RECENTES = 2;
+const JANELA_RECENTE_HIST = 5;
+
+export type ConsumoAdaptativo = { valor: number | null; confianca: Confianca | null };
+
+/**
+ * Consumo (km/l) para o medidor virtual, priorizando medições recentes.
+ * Cai para o consumo de referência do cadastro (baixa confiança) quando não há
+ * medições; null quando não há nada.
+ */
+export function consumoAdaptativo(
+  metrics: Metrics | null,
+  referenciaMisto?: number | null,
+): ConsumoAdaptativo {
+  const ints = metrics?.intervalos ?? [];
+  if (ints.length === 0) {
+    if (referenciaMisto && referenciaMisto > 0) return { valor: referenciaMisto, confianca: "baixa" };
+    return { valor: null, confianca: null };
+  }
+  const aggr = (arr: Intervalo[]) => {
+    const km = arr.reduce((s, x) => s + x.km, 0);
+    const l = arr.reduce((s, x) => s + x.litros, 0);
+    return l > 0 ? km / l : 0;
+  };
+  const recentes = aggr(ints.slice(-JANELA_RECENTES));
+  const recenteHist = aggr(ints.slice(-JANELA_RECENTE_HIST));
+  const geral = aggr(ints);
+  const valor =
+    PESOS_CONSUMO.recentes * recentes +
+    PESOS_CONSUMO.recenteHist * recenteHist +
+    PESOS_CONSUMO.geral * geral;
+
+  const cheio = metrics?.confianca === "alta";
+  const confianca: Confianca =
+    cheio && ints.length >= 2 ? "alta" : cheio || metrics?.confianca === "media" ? "media" : "baixa";
+  return { valor: Number(valor.toFixed(2)), confianca };
+}
+
+export type EventoTanque = {
+  tipo: "REFUEL" | "CONSUMO" | "CALIBRACAO";
+  odometro: number;
+  data?: string;
+  litros: number; // positivo abastece, negativo consome
+  saldo: number; // saldo estimado após o evento
+};
+
+export type TanqueVirtual = {
+  litros: number | null;
+  pct: number | null;
+  autonomia: number | null;
+  autonomiaAteReserva: number | null;
+  emReserva: boolean;
+  atencao: boolean;
+  confianca: Confianca | null;
+  consumoUtilizado: number | null;
+  semDados: boolean; // sem consumo para estimar
+  extrato: EventoTanque[];
+};
+
+/**
+ * Estima o combustível no tanque a partir da sequência de eventos (fold):
+ * começa em 0 L, cada abastecimento soma, cada trecho rodado desconta o
+ * consumo, e "tanque cheio" recalibra para a capacidade. Nunca abaixo de 0
+ * nem acima da capacidade. Derivado — recalcula sozinho ao editar/excluir.
+ */
+export function computeTanqueVirtual(args: {
+  refuels: Refuel[];
+  capacidade: number;
+  reserva?: number | null | undefined;
+  consumo: ConsumoAdaptativo;
+  odometroAtual?: number | null | undefined;
+}): TanqueVirtual {
+  const { capacidade, consumo, odometroAtual } = args;
+  const reserva = args.reserva ?? 0;
+  const cu = consumo.valor;
+  const vazio: TanqueVirtual = {
+    litros: null,
+    pct: null,
+    autonomia: null,
+    autonomiaAteReserva: null,
+    emReserva: false,
+    atencao: false,
+    confianca: consumo.confianca,
+    consumoUtilizado: cu,
+    semDados: true,
+    extrato: [],
+  };
+  if (!cu || cu <= 0 || capacidade <= 0) return vazio;
+
+  const rows = [...args.refuels].sort(
+    (a, b) => a.odometro - b.odometro || a.data.localeCompare(b.data),
+  );
+
+  let saldo = 0;
+  let prevOdo: number | null = null;
+  const extrato: EventoTanque[] = [];
+  for (const r of rows) {
+    if (prevOdo != null) {
+      const km = r.odometro - prevOdo;
+      if (km > 0) {
+        const c = km / cu;
+        saldo = Math.max(0, saldo - c);
+        extrato.push({
+          tipo: "CONSUMO",
+          odometro: r.odometro,
+          litros: -Number(c.toFixed(2)),
+          saldo: Number(saldo.toFixed(2)),
+        });
+      }
+    }
+    saldo = Math.min(capacidade, saldo + r.litros);
+    let tipo: EventoTanque["tipo"] = "REFUEL";
+    if (r.tanqueCheio) {
+      saldo = capacidade; // calibração: completou o tanque
+      tipo = "CALIBRACAO";
+    }
+    extrato.push({
+      tipo,
+      odometro: r.odometro,
+      data: r.data,
+      litros: r.litros,
+      saldo: Number(saldo.toFixed(2)),
+    });
+    prevOdo = r.odometro;
+  }
+
+  // Consumo do último abastecimento até o hodômetro atual.
+  if (odometroAtual != null && prevOdo != null && odometroAtual > prevOdo) {
+    const c = (odometroAtual - prevOdo) / cu;
+    saldo = Math.max(0, saldo - c);
+    extrato.push({
+      tipo: "CONSUMO",
+      odometro: odometroAtual,
+      litros: -Number(c.toFixed(2)),
+      saldo: Number(saldo.toFixed(2)),
+    });
+  }
+
+  const litros = Number(saldo.toFixed(1));
+  const pct = Number(((saldo / capacidade) * 100).toFixed(0));
+  const emReserva = reserva > 0 ? saldo <= reserva : pct <= 10;
+  const atencao = !emReserva && pct <= 25;
+
+  // Confiança do medidor: exige uma calibração recente para ser alta.
+  const temCalibracao = extrato.some((e) => e.tipo === "CALIBRACAO");
+  let confianca: Confianca = consumo.confianca ?? "baixa";
+  if (confianca === "alta" && !temCalibracao) confianca = "media";
+
+  return {
+    litros,
+    pct,
+    autonomia: Number((saldo * cu).toFixed(0)),
+    autonomiaAteReserva: Number((Math.max(0, saldo - reserva) * cu).toFixed(0)),
+    emReserva,
+    atencao,
+    confianca,
+    consumoUtilizado: cu,
+    semDados: false,
+    extrato,
+  };
 }
 
 /**

@@ -22,6 +22,7 @@ import { VehicleEditDialog } from "@/components/fuel/VehicleEditDialog";
 import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import { OdometerPanel } from "@/components/fuel/OdometerPanel";
 import { FuelCard } from "@/components/fuel/FuelCard";
+import { FuelGauge } from "@/components/fuel/FuelGauge";
 import { Timeline } from "@/components/fuel/Timeline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getConsumoByModeloCompleto, getTipoByModeloCompleto } from "@/lib/vehicle-database";
@@ -50,7 +51,9 @@ import {
 import {
   brl,
   computeMetrics,
+  computeTanqueVirtual,
   confiancaLabel,
+  consumoAdaptativo,
   estimarCombustivel,
   num,
   type Refuel,
@@ -145,6 +148,19 @@ function Dashboard() {
         : null,
     [doVeiculo, vehicle, odoVigente, metrics],
   );
+  const tanqueVirtual = useMemo(
+    () =>
+      vehicle
+        ? computeTanqueVirtual({
+            refuels: doVeiculo,
+            capacidade: vehicle.tanque,
+            reserva: vehicle.reservaLitros,
+            consumo: consumoAdaptativo(metrics, consumoRef?.misto),
+            odometroAtual: odoVigente,
+          })
+        : null,
+    [doVeiculo, vehicle, odoVigente, metrics, consumoRef?.misto],
+  );
 
   const [odometros, setOdometros] = useState<Record<string, number>>({});
   const [limites, setLimites] = useState<Record<string, number>>({});
@@ -217,7 +233,10 @@ function Dashboard() {
     }
   }
 
-  async function editarVeiculo(id: string, patch: Pick<Vehicle, "nome" | "placa" | "tanque">) {
+  async function editarVeiculo(
+    id: string,
+    patch: Pick<Vehicle, "nome" | "placa" | "tanque" | "reservaLitros">,
+  ) {
     try {
       const salvo = await updateVehicle(id, patch);
       setVehicles((prev) => prev.map((v) => (v.id === id ? salvo : v)));
@@ -454,13 +473,16 @@ function Dashboard() {
 
             {/* Visão geral */}
             <TabsContent value="visao" className="mt-4 space-y-4">
-              {estado ? (
-                <FuelCard
-                  ultimo={doVeiculo[0] ?? null}
-                  metrics={metrics}
-                  estado={estado}
-                  tanque={vehicle.tanque}
+              {tanqueVirtual ? (
+                <FuelGauge
+                  tanque={tanqueVirtual}
+                  capacidade={vehicle.tanque}
+                  reserva={vehicle.reservaLitros}
                 />
+              ) : null}
+
+              {estado ? (
+                <FuelCard ultimo={doVeiculo[0] ?? null} metrics={metrics} estado={estado} />
               ) : null}
 
               {metrics ? (

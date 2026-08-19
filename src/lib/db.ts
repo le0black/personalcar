@@ -17,9 +17,11 @@ type VehicleRow = {
   tanque: number;
   odometro_atual: number | null;
   odometro_inicial: number | null;
+  reserva_litros: number | null;
 };
 
-const VEHICLE_COLS = "id, nome, placa, modelo, ano, tanque, odometro_atual, odometro_inicial";
+const VEHICLE_COLS =
+  "id, nome, placa, modelo, ano, tanque, odometro_atual, odometro_inicial, reserva_litros";
 
 type RefuelRow = {
   id: string;
@@ -48,6 +50,7 @@ const toVehicle = (r: VehicleRow): Vehicle => ({
   tanque: Number(r.tanque),
   odometroAtual: r.odometro_atual === null ? null : Number(r.odometro_atual),
   odometroInicial: r.odometro_inicial === null ? null : Number(r.odometro_inicial),
+  reservaLitros: r.reserva_litros === null ? null : Number(r.reserva_litros),
 });
 
 const toRefuel = (r: RefuelRow): Refuel => ({
@@ -89,6 +92,7 @@ export async function insertVehicle(v: Omit<Vehicle, "id">): Promise<Vehicle> {
       odometro_inicial: v.odometroInicial ?? null,
       // Odômetro atual começa no inicial (base da vida operacional).
       odometro_atual: v.odometroAtual ?? v.odometroInicial ?? null,
+      reserva_litros: v.reservaLitros ?? null,
     })
     .select(VEHICLE_COLS)
     .single();
@@ -110,6 +114,7 @@ export async function updateVehicle(
   if (v.tanque !== undefined) patch["tanque"] = v.tanque;
   if (v.odometroAtual !== undefined) patch["odometro_atual"] = v.odometroAtual;
   if (v.odometroInicial !== undefined) patch["odometro_inicial"] = v.odometroInicial;
+  if (v.reservaLitros !== undefined) patch["reserva_litros"] = v.reservaLitros;
   const { data, error } = await sb
     .from("vehicles")
     .update(patch)
