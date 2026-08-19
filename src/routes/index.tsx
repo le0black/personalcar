@@ -21,8 +21,16 @@ import { VehicleForm } from "@/components/fuel/VehicleForm";
 import { VehicleEditDialog } from "@/components/fuel/VehicleEditDialog";
 import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import { OdometerPanel } from "@/components/fuel/OdometerPanel";
+import { FuelCard } from "@/components/fuel/FuelCard";
+import { Timeline } from "@/components/fuel/Timeline";
 import { getConsumoByModeloCompleto, getTipoByModeloCompleto } from "@/lib/vehicle-database";
-import { ConsumoChart, GastoChart, PrecoChart } from "@/components/fuel/Charts";
+import {
+  ConsumoChart,
+  CustoKmChart,
+  GastoChart,
+  LitrosChart,
+  PrecoChart,
+} from "@/components/fuel/Charts";
 import { ReminderPanel, computeReminder } from "@/components/fuel/ReminderPanel";
 import { AuthGate } from "@/components/auth/AuthGate";
 import { supabase } from "@/lib/supabase";
@@ -42,6 +50,7 @@ import {
   brl,
   computeMetrics,
   confiancaLabel,
+  estimarCombustivel,
   num,
   type Refuel,
   type Vehicle,
@@ -121,6 +130,20 @@ function Dashboard() {
 
   const ultimoOdometro = doVeiculo[0]?.odometro ?? 0;
   const melhorando = (metrics?.tendencia ?? 0) >= 0;
+  const odoVigente = vehicle?.odometroAtual ?? ultimoOdometro;
+  const estado = useMemo(
+    () =>
+      vehicle
+        ? estimarCombustivel({
+            refuels: doVeiculo,
+            tanque: vehicle.tanque,
+            odometroInicial: vehicle.odometroInicial,
+            odometroAtual: odoVigente,
+            metrics,
+          })
+        : null,
+    [doVeiculo, vehicle, odoVigente, metrics],
+  );
 
   const [odometros, setOdometros] = useState<Record<string, number>>({});
   const [limites, setLimites] = useState<Record<string, number>>({});
@@ -421,6 +444,17 @@ function Dashboard() {
             />
           </div>
 
+          {estado ? (
+            <div className="mt-4">
+              <FuelCard
+                ultimo={doVeiculo[0] ?? null}
+                metrics={metrics}
+                estado={estado}
+                tanque={vehicle.tanque}
+              />
+            </div>
+          ) : null}
+
           {metrics ? (
             <>
               <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -459,8 +493,17 @@ function Dashboard() {
                 <GastoChart porMes={metrics.porMes} />
               </section>
 
-              <section className="mt-4">
+              <section className="mt-4 grid gap-4 lg:grid-cols-2">
+                <LitrosChart porMes={metrics.porMes} />
                 <PrecoChart serie={metrics.serie} />
+              </section>
+
+              <section className="mt-4">
+                <CustoKmChart serie={metrics.serie} />
+              </section>
+
+              <section className="mt-6">
+                <Timeline intervalos={metrics.intervalos} refuels={doVeiculo} />
               </section>
             </>
           ) : (

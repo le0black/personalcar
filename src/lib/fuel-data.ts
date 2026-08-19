@@ -313,3 +313,67 @@ export function computeMetrics(list: Refuel[], tanque: number): Metrics | null {
     intervalos,
   };
 }
+
+/** Estado estimado do combustível do veículo. `restante = null` = não determinado. */
+export type EstadoCombustivel = {
+  litrosAbastecidos: number; // acumulado (soma de todos os abastecimentos)
+  litrosConsumidos: number | null; // estimado, desde o início da vida
+  restante: number | null; // litros no tanque agora (null = não determinado)
+  pctTanque: number | null;
+  confianca: Confianca | null;
+};
+
+/**
+ * Estima o estado do combustível a partir dos eventos.
+ * Só determina o "restante" quando há uma âncora confiável (um tanque cheio) e
+ * um consumo estimado; caso contrário retorna null (não determinado).
+ */
+export function estimarCombustivel(args: {
+  refuels: Refuel[];
+  tanque: number;
+  odometroInicial?: number | null | undefined;
+  odometroAtual?: number | null | undefined;
+  metrics: Metrics | null;
+}): EstadoCombustivel {
+  const { tanque, odometroInicial, odometroAtual, metrics } = args;
+  const rows = [...args.refuels].sort(
+    (a, b) => a.odometro - b.odometro || a.data.localeCompare(b.data),
+  );
+  const litrosAbastecidos = Number(rows.reduce((s, r) => s + r.litros, 0).toFixed(1));
+  const consumo = metrics?.consumoMedio ?? null;
+
+  // Litros consumidos estimados desde o início da vida operacional.
+  const odoBase = odometroInicial ?? rows[0]?.odometro ?? null;
+  let litrosConsumidos: number | null = null;
+  if (consumo && consumo > 0 && odoBase != null && odometroAtual != null && odometroAtual > odoBase) {
+    litrosConsumidos = Number(((odometroAtual - odoBase) / consumo).toFixed(1));
+  }
+
+  // Restante estimado — ancorado no último abastecimento de tanque cheio.
+  let restante: number | null = null;
+  let pctTanque: number | null = null;
+  let confianca: Confianca | null = null;
+  let idxCheio = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i]!.tanqueCheio) {
+      idxCheio = i;
+      break;
+    }
+  }
+  if (idxCheio >= 0 && consumo && consumo > 0 && odometroAtual != null) {
+    const cheio = rows[idxCheio]!;
+    const km = odometroAtual - cheio.odometro;
+    if (km >= 0) {
+      const litrosApos = rows.slice(idxCheio + 1).reduce((s, r) => s + r.litros, 0);
+      let r = tanque - km / consumo + litrosApos;
+      r = Math.max(0, Math.min(tanque, r));
+      restante = Number(r.toFixed(1));
+      pctTanque = tanque > 0 ? Number(((r / tanque) * 100).toFixed(0)) : null;
+      // Restante é sempre uma estimativa: rebaixa um nível da confiança do consumo.
+      const c = metrics?.confianca ?? "baixa";
+      confianca = c === "alta" ? "media" : "baixa";
+    }
+  }
+
+  return { litrosAbastecidos, litrosConsumidos, restante, pctTanque, confianca };
+}

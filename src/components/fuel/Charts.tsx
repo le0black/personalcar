@@ -94,6 +94,65 @@ export function GastoChart({ porMes }: { porMes: Metrics["porMes"] }) {
   );
 }
 
+export function LitrosChart({ porMes }: { porMes: Metrics["porMes"] }) {
+  return (
+    <div className="panel p-5">
+      <h3 className="font-display text-lg font-semibold">Litros por mês</h3>
+      <p className="text-xs text-muted-foreground">Volume abastecido em cada mês</p>
+      <div className="mt-5 h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={porMes} margin={{ left: -10, right: 8, top: 8 }}>
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="mes" {...axis} />
+            <YAxis {...axis} />
+            <Tooltip
+              cursor={{ fill: "var(--accent)" }}
+              contentStyle={tooltipStyle}
+              formatter={(v: number) => [`${num(v, 1)} L`, "Litros"]}
+            />
+            <Bar dataKey="litros" fill="var(--chart-2)" radius={[6, 6, 0, 0]} maxBarSize={38} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+export function CustoKmChart({ serie }: { serie: Metrics["serie"] }) {
+  return (
+    <div className="panel p-5">
+      <h3 className="font-display text-lg font-semibold">Custo por km ao longo do tempo</h3>
+      <p className="text-xs text-muted-foreground">Quanto cada quilômetro custou em cada intervalo</p>
+      <div className="mt-5 h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={serie} margin={{ left: -12, right: 8, top: 8 }}>
+            <defs>
+              <linearGradient id="gCusto" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.4} />
+                <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="data" {...axis} />
+            <YAxis {...axis} domain={["dataMin - 0.05", "dataMax + 0.05"]} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(v: number) => [`${brl(v)}/km`, "Custo/km"]}
+            />
+            <Area
+              type="monotone"
+              dataKey="custoKm"
+              stroke="var(--chart-2)"
+              strokeWidth={2}
+              fill="url(#gCusto)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 export function PrecoChart({ serie }: { serie: Metrics["serie"] }) {
   return (
     <div className="panel p-5">
