@@ -1,4 +1,5 @@
 import { AlertTriangle, Fuel, Gauge } from "lucide-react";
+import { FuelTank } from "@/components/fuel/FuelTank";
 import { confiancaLabel, num, type Confianca, type TanqueVirtual } from "@/lib/fuel-data";
 
 type Props = {
@@ -10,9 +11,11 @@ type Props = {
 const emoji: Record<Confianca, string> = { alta: "🟢", media: "🟡", baixa: "🔴" };
 
 export function FuelGauge({ tanque, capacidade, reserva }: Props) {
-  const faixa = tanque.emReserva ? "reserva" : tanque.atencao ? "atencao" : "normal";
-  const barra =
-    faixa === "reserva" ? "bg-destructive" : faixa === "atencao" ? "bg-warning" : "bg-primary";
+  const faixa: "normal" | "atencao" | "reserva" = tanque.emReserva
+    ? "reserva"
+    : tanque.atencao
+      ? "atencao"
+      : "normal";
   const valorCor =
     faixa === "reserva" ? "text-destructive" : faixa === "atencao" ? "text-warning" : "";
 
@@ -40,21 +43,21 @@ export function FuelGauge({ tanque, capacidade, reserva }: Props) {
         </div>
       ) : (
         <>
-          <div className="mt-4 flex items-end justify-between gap-3">
-            <p className={`numeral font-display text-3xl font-bold ${valorCor}`}>
-              {num(tanque.litros, 1)} <span className="text-lg font-medium">L</span>
-              <span className="ml-2 text-base font-medium text-muted-foreground">
-                {tanque.pct}% de {num(capacidade, 0)} L
-              </span>
-            </p>
-          </div>
-
-          {/* Barra da boia */}
-          <div className="mt-3 h-4 overflow-hidden rounded-full bg-secondary">
-            <div
-              className={`h-full rounded-full transition-all ${barra}`}
-              style={{ width: `${Math.max(2, tanque.pct)}%` }}
-            />
+          <div className="mt-4">
+            <FuelTank
+              pct={tanque.pct}
+              faixa={faixa}
+              reservaPct={reserva && capacidade > 0 ? (reserva / capacidade) * 100 : null}
+            >
+              <div>
+                <p className={`numeral font-display text-4xl font-bold leading-none ${valorCor}`}>
+                  {num(tanque.litros, 1)} <span className="text-xl font-medium">L</span>
+                </p>
+                <p className="numeral mt-1.5 text-sm text-muted-foreground">
+                  {tanque.pct}% de {num(capacidade, 0)} L
+                </p>
+              </div>
+            </FuelTank>
           </div>
 
           {tanque.emReserva ? (
@@ -92,7 +95,7 @@ export function FuelGauge({ tanque, capacidade, reserva }: Props) {
 
           <p className="mt-3 text-[11px] text-muted-foreground">
             Estimativa — não é uma leitura física do tanque. Abastecer com tanque cheio recalibra
-            para 100%.
+            para 100%. Toque no tanque para chacoalhar.
           </p>
         </>
       )}
