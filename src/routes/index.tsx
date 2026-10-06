@@ -23,6 +23,7 @@ import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import { OdometerPanel } from "@/components/fuel/OdometerPanel";
 import { FuelCard } from "@/components/fuel/FuelCard";
 import { FuelGauge } from "@/components/fuel/FuelGauge";
+import { Cockpit } from "@/components/fuel/Cockpit";
 import { Timeline } from "@/components/fuel/Timeline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getConsumoByModeloCompleto, getTipoByModeloCompleto } from "@/lib/vehicle-database";
@@ -95,6 +96,7 @@ function Dashboard() {
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [tela, setTela] = useTela();
 
   // Carrega veículos e abastecimentos do usuário logado.
   useEffect(() => {
@@ -121,10 +123,7 @@ function Dashboard() {
   const consumoRef = vehicle ? getConsumoByModeloCompleto(vehicle.modelo) : null;
 
   const doVeiculo = useMemo(
-    () =>
-      refuels
-        .filter((r) => r.vehicleId === vehicleId)
-        .sort((a, b) => b.odometro - a.odometro),
+    () => refuels.filter((r) => r.vehicleId === vehicleId).sort((a, b) => b.odometro - a.odometro),
     [refuels, vehicleId],
   );
   const metrics = useMemo(
@@ -167,8 +166,7 @@ function Dashboard() {
   const [lembretes, setLembretes] = useState<Record<string, boolean>>({});
 
   const chave = vehicleId ?? "";
-  const odometroAtual =
-    odometros[chave] ?? vehicle?.odometroAtual ?? ultimoOdometro + 320;
+  const odometroAtual = odometros[chave] ?? vehicle?.odometroAtual ?? ultimoOdometro + 320;
   const limiteKm = limites[chave] ?? 80;
   const lembreteAtivo = lembretes[chave] ?? true;
 
@@ -259,10 +257,7 @@ function Dashboard() {
     }
   }
 
-  async function editarAbastecimento(
-    id: string,
-    patch: Partial<Omit<Refuel, "id" | "vehicleId">>,
-  ) {
+  async function editarAbastecimento(id: string, patch: Partial<Omit<Refuel, "id" | "vehicleId">>) {
     try {
       const salvo = await updateRefuel(id, patch);
       setRefuels((prev) => prev.map((r) => (r.id === id ? salvo : r)));
@@ -311,6 +306,25 @@ function Dashboard() {
     );
   }
 
+  if (tela === "painel" && vehicle && tanqueVirtual && !erroCarga) {
+    return (
+      <Cockpit
+        vehicle={vehicle}
+        vehicles={vehicles}
+        onSelectVehicle={setVehicleId}
+        tanque={tanqueVirtual}
+        odometro={odoVigente}
+        ultimoOdometro={ultimoOdometro}
+        custoPorKm={metrics?.custoPorKm}
+        refuels={doVeiculo}
+        consumoMedio={metrics?.consumoMedio}
+        onAddRefuel={adicionarAbastecimento}
+        onSaveOdometro={salvarOdometro}
+        onDetalhes={() => setTela("detalhes")}
+      />
+    );
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
@@ -344,6 +358,16 @@ function Dashboard() {
             ))}
             <VehicleForm onAdd={adicionarVeiculo} />
           </div>
+          {vehicle ? (
+            <button
+              onClick={() => setTela("painel")}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              title="Voltar ao painel"
+            >
+              <Gauge className="size-4" />
+              <span className="hidden sm:inline">Painel</span>
+            </button>
+          ) : null}
           <button
             onClick={sair}
             className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
@@ -607,4 +631,28 @@ function Dashboard() {
       </footer>
     </main>
   );
+}
+
+type Tela = "painel" | "detalhes";
+
+/** Tela atual (painel do carro ou detalhes), lembrada neste aparelho. */
+function useTela(): [Tela, (t: Tela) => void] {
+  const [tela, setTelaState] = useState<Tela>("painel");
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("abastece:tela") === "detalhes") setTelaState("detalhes");
+    } catch {
+      // armazenamento indisponível: fica no painel
+    }
+  }, []);
+  function setTela(t: Tela) {
+    setTelaState(t);
+    try {
+      localStorage.setItem("abastece:tela", t);
+    } catch {
+      // ignora
+    }
+    window.scrollTo({ top: 0 });
+  }
+  return [tela, setTela];
 }
