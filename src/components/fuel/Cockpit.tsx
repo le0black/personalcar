@@ -7,6 +7,8 @@ import {
   LayoutList,
   Maximize,
   Minimize,
+  Navigation,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +44,18 @@ type Props = {
   onAddRefuel: (r: Refuel) => Promise<boolean> | boolean;
   onSaveOdometro: (km: number) => Promise<void> | void;
   onDetalhes: () => void;
+  /** Viagem pelo GPS em andamento (null quando parada). */
+  viagem: ViagemAoVivo | null;
+  erroGps: string | null;
+  onIniciarViagem: () => void;
+  onEncerrarViagem: () => Promise<void> | void;
+};
+
+export type ViagemAoVivo = {
+  distancia: number;
+  segundos: number;
+  velocidade: number | null;
+  erro: string | null;
 };
 
 /**
@@ -61,6 +75,10 @@ export function Cockpit({
   onAddRefuel,
   onSaveOdometro,
   onDetalhes,
+  viagem,
+  erroGps,
+  onIniciarViagem,
+  onEncerrarViagem,
 }: Props) {
   const [abastecer, setAbastecer] = useState(false);
   const [atualizarKm, setAtualizarKm] = useState(false);
@@ -75,8 +93,14 @@ export function Cockpit({
       ? (vehicle.reservaLitros / vehicle.tanque) * 100
       : null;
 
+  async function iniciarViagem() {
+    // A tela precisa ficar ligada: com ela apagada o navegador pausa o GPS.
+    if (!modoCarro.ativo) await modoCarro.alternar();
+    onIniciarViagem();
+  }
+
   function proximoVeiculo() {
-    if (vehicles.length < 2) return;
+    if (vehicles.length < 2 || viagem) return;
     const i = vehicles.findIndex((v) => v.id === vehicle.id);
     onSelectVehicle(vehicles[(i + 1) % vehicles.length]!.id);
   }
@@ -92,10 +116,16 @@ export function Cockpit({
           type="button"
           onClick={proximoVeiculo}
           className="flex min-w-0 items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold"
-          title={vehicles.length > 1 ? "Trocar de veículo" : vehicle.modelo}
+          title={
+            viagem
+              ? "Encerre a viagem para trocar"
+              : vehicles.length > 1
+                ? "Trocar de veículo"
+                : vehicle.modelo
+          }
         >
           <span className="truncate">{vehicle.nome}</span>
-          {vehicles.length > 1 ? (
+          {vehicles.length > 1 && !viagem ? (
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
           ) : null}
         </button>
@@ -163,6 +193,8 @@ export function Cockpit({
             </>
           )}
 
+          {viagem ? <PainelViagem viagem={viagem} /> : null}
+
           {tanque.emReserva ? (
             <p className="flex items-center gap-2 rounded-xl bg-destructive/15 px-4 py-2.5 font-display text-lg font-bold text-destructive">
               <AlertTriangle className="size-5 shrink-0" />
@@ -189,21 +221,43 @@ export function Cockpit({
         </section>
 
         {/* Ações grandes */}
-        <section className="grid grid-cols-2 gap-3 pb-[env(safe-area-inset-bottom)] landscape:grid-cols-1">
+        <section className="grid grid-cols-2 gap-3 pb-[env(safe-area-inset-bottom)] landscape:gap-2">
+          {viagem ? (
+            <Button
+              size="lg"
+              variant="destructive"
+              className="col-span-2 h-16 rounded-2xl text-lg font-bold landscape:h-14"
+              onClick={() => void onEncerrarViagem()}
+            >
+              <Square className="size-6" /> Encerrar viagem
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              className="col-span-2 h-16 rounded-2xl text-lg font-bold landscape:h-14"
+              onClick={() => void iniciarViagem()}
+            >
+              <Navigation className="size-6" /> Iniciar viagem
+            </Button>
+          )}
+          {erroGps && !viagem ? (
+            <p className="col-span-2 text-center text-sm text-destructive">{erroGps}</p>
+          ) : null}
           <Button
             size="lg"
-            className="h-16 rounded-2xl text-lg font-bold landscape:h-14"
+            variant="secondary"
+            className="h-14 rounded-2xl text-base font-bold landscape:h-12 landscape:px-2 landscape:text-sm"
             onClick={() => setAbastecer(true)}
           >
-            <Fuel className="size-6" /> Abasteci
+            <Fuel className="size-5" /> Abasteci
           </Button>
           <Button
             size="lg"
             variant="secondary"
-            className="h-16 rounded-2xl text-lg font-bold landscape:h-14"
+            className="h-14 rounded-2xl text-base font-bold landscape:h-12 landscape:px-2 landscape:text-sm"
             onClick={() => setAtualizarKm(true)}
           >
-            <Gauge className="size-6" /> Atualizar km
+            <Gauge className="size-5" /> Km
           </Button>
         </section>
       </div>
@@ -244,6 +298,35 @@ export function Cockpit({
         </DrawerContent>
       </Drawer>
     </main>
+  );
+}
+
+/** Leitura da viagem: km rodados, tempo e velocidade do GPS. */
+function PainelViagem({ viagem }: { viagem: ViagemAoVivo }) {
+  const h = Math.floor(viagem.segundos / 3600);
+  const m = Math.floor((viagem.segundos % 3600) / 60);
+  const tempo = h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
+  return (
+    <div className="w-full rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3">
+      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+        <span className="relative flex size-2">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
+          <span className="relative inline-flex size-2 rounded-full bg-primary" />
+        </span>
+        {viagem.erro ? viagem.erro : "Viagem · GPS"}
+      </p>
+      <div className="numeral mt-1 flex items-baseline justify-between gap-3 font-display">
+        <span className="text-3xl font-bold">
+          {num(viagem.distancia, 1)}
+          <span className="ml-1 text-sm font-semibold text-muted-foreground">km</span>
+        </span>
+        <span className="text-lg font-semibold text-muted-foreground">{tempo}</span>
+        <span className="text-lg font-semibold">
+          {viagem.velocidade != null ? num(viagem.velocidade, 0) : "—"}
+          <span className="ml-1 text-xs text-muted-foreground">km/h</span>
+        </span>
+      </div>
+    </div>
   );
 }
 

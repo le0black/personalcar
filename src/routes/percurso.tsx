@@ -6,7 +6,8 @@ import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { AuthGate } from "@/components/auth/AuthGate";
 import { fetchRefuels, fetchVehicles, updateOdometro } from "@/lib/db";
-import { haversineKm, type LatLng } from "@/lib/geo";
+import { type LatLng } from "@/lib/geo";
+import { useViagemGps } from "@/hooks/use-viagem-gps";
 import { num, type Vehicle } from "@/lib/fuel-data";
 
 export const Route = createFileRoute("/percurso")({
@@ -31,11 +32,10 @@ function Percurso() {
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
 
-  const [tracking, setTracking] = useState(false);
-  const [distancia, setDistancia] = useState(0);
   const [pontosCount, setPontosCount] = useState(0);
-  const [segundos, setSegundos] = useState(0);
   const [salvo, setSalvo] = useState(false);
+  /** Distância da viagem já encerrada, aguardando ser somada ao odômetro. */
+  const [encerrada, setEncerrada] = useState<number | null>(null);
 
   const mapElRef = useRef<HTMLDivElement>(null);
   // Refs de Leaflet e do rastreamento (evitam closures obsoletas no watchPosition).
@@ -43,10 +43,21 @@ function Percurso() {
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const lineRef = useRef<import("leaflet").Polyline | null>(null);
   const markerRef = useRef<import("leaflet").CircleMarker | null>(null);
-  const pontosRef = useRef<LatLng[]>([]);
-  const distRef = useRef(0);
-  const watchRef = useRef<number | null>(null);
-  const inicioRef = useRef<number>(0);
+
+  const gps = useViagemGps({
+    onPonto: (pt: LatLng) => {
+      setPontosCount((n) => n + 1);
+      lineRef.current?.addLatLng(pt);
+      const map = mapRef.current;
+      if (map) {
+        markerRef.current?.setLatLng(pt).addTo(map);
+        map.setView(pt, Math.max(map.getZoom(), 16));
+      }
+    },
+  });
+  const tracking = gps.viagem != null;
+  const distancia = gps.viagem?.distancia ?? encerrada ?? 0;
+  const segundos = gps.segundos;
 
   // Carrega veículos e calcula o odômetro base (persistido ou último abastecimento).
   useEffect(() => {
@@ -115,73 +126,41 @@ function Percurso() {
     })();
     return () => {
       cancelado = true;
-      if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
     };
   }, [carregando]);
 
-  // Cronômetro enquanto rastreia.
+  // Viagem em andamento (iniciada aqui ou no painel): fica no veículo dela.
+  const veiculoDaViagem = gps.viagem?.vehicleId;
   useEffect(() => {
-    if (!tracking) return;
-    const t = setInterval(() => {
-      setSegundos(Math.floor((Date.now() - inicioRef.current) / 1000));
-    }, 1000);
-    return () => clearInterval(t);
-  }, [tracking]);
+    if (veiculoDaViagem) setVehicleId(veiculoDaViagem);
+  }, [veiculoDaViagem]);
 
-  function onPos(pos: GeolocationPosition) {
-    const pt: LatLng = [pos.coords.latitude, pos.coords.longitude];
-    if (pos.coords.accuracy > 50) return; // ignora leitura muito imprecisa
-    const prev = pontosRef.current[pontosRef.current.length - 1];
-    if (prev) {
-      const d = haversineKm(prev, pt);
-      if (d < 0.005) return; // <5 m: ruído parado
-      distRef.current += d;
-      setDistancia(distRef.current);
-    }
-    pontosRef.current.push(pt);
-    setPontosCount(pontosRef.current.length);
-    lineRef.current?.addLatLng(pt);
-    const map = mapRef.current;
-    if (map) {
-      markerRef.current?.setLatLng(pt).addTo(map);
-      map.setView(pt, Math.max(map.getZoom(), 16));
-    }
-  }
+  useEffect(() => {
+    if (gps.erro) toast.error(`GPS: ${gps.erro}`);
+  }, [gps.erro]);
 
   function iniciar() {
-    if (!navigator.geolocation) {
-      toast.error("Este dispositivo/navegador não tem GPS disponível.");
-      return;
-    }
-    pontosRef.current = [];
-    distRef.current = 0;
+    const v = vehicles.find((x) => x.id === vehicleId);
+    if (!v) return;
     lineRef.current?.setLatLngs([]);
-    setDistancia(0);
     setPontosCount(0);
-    setSegundos(0);
     setSalvo(false);
-    inicioRef.current = Date.now();
-    setTracking(true);
-    watchRef.current = navigator.geolocation.watchPosition(
-      onPos,
-      (e) => toast.error(`GPS: ${e.message}`),
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 },
-    );
+    setEncerrada(null);
+    gps.iniciar(v.id, v.odometroAtual ?? basePorVeiculo[v.id] ?? 0);
   }
 
   function parar() {
-    if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
-    watchRef.current = null;
-    setTracking(false);
+    const fim = gps.encerrar();
+    setEncerrada(fim?.distancia ?? 0);
   }
 
   async function somarNoOdometro() {
     const v = vehicles.find((x) => x.id === vehicleId);
     if (!v) return;
     const base = v.odometroAtual ?? basePorVeiculo[v.id] ?? 0;
-    const novo = Math.round(base + distRef.current);
+    const novo = Math.round(base + distancia);
     try {
       const salvoV = await updateOdometro(v.id, novo);
       setVehicles((prev) => prev.map((x) => (x.id === v.id ? salvoV : x)));

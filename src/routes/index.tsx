@@ -26,6 +26,7 @@ import { FuelGauge } from "@/components/fuel/FuelGauge";
 import { Cockpit } from "@/components/fuel/Cockpit";
 import { Timeline } from "@/components/fuel/Timeline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useViagemGps } from "@/hooks/use-viagem-gps";
 import { getConsumoByModeloCompleto, getTipoByModeloCompleto } from "@/lib/vehicle-database";
 import {
   ConsumoChart,
@@ -134,6 +135,22 @@ function Dashboard() {
   const ultimoOdometro = doVeiculo[0]?.odometro ?? 0;
   const melhorando = (metrics?.tendencia ?? 0) >= 0;
   const odoVigente = vehicle?.odometroAtual ?? ultimoOdometro;
+
+  // Viagem pelo GPS: enquanto ela roda, o odômetro (e com ele o tanque e a
+  // autonomia) avança ao vivo com a distância percorrida.
+  const gps = useViagemGps();
+  const viagem = gps.viagem?.vehicleId === vehicleId ? gps.viagem : null;
+  const odoAoVivo = viagem
+    ? Math.max(odoVigente, ultimoOdometro, viagem.base + viagem.distancia)
+    : odoVigente;
+
+  // Viagem retomada após recarregar: volta para o veículo dela.
+  const veiculoDaViagem = gps.viagem?.vehicleId;
+  useEffect(() => {
+    if (veiculoDaViagem && vehicles.some((v) => v.id === veiculoDaViagem)) {
+      setVehicleId(veiculoDaViagem);
+    }
+  }, [veiculoDaViagem, vehicles]);
   const estado = useMemo(
     () =>
       vehicle
@@ -155,10 +172,10 @@ function Dashboard() {
             capacidade: vehicle.tanque,
             reserva: vehicle.reservaLitros,
             consumo: consumoAdaptativo(metrics, consumoRef?.misto),
-            odometroAtual: odoVigente,
+            odometroAtual: odoAoVivo,
           })
         : null,
-    [doVeiculo, vehicle, odoVigente, metrics, consumoRef?.misto],
+    [doVeiculo, vehicle, odoAoVivo, metrics, consumoRef?.misto],
   );
 
   const [odometros, setOdometros] = useState<Record<string, number>>({});
@@ -289,6 +306,37 @@ function Dashboard() {
     }
   }
 
+  function iniciarViagem() {
+    if (!vehicle) return;
+    gps.iniciar(vehicle.id, Math.max(odoVigente, ultimoOdometro));
+  }
+
+  /** Encerra a viagem e grava o odômetro com os km rodados. */
+  async function encerrarViagem() {
+    const fim = gps.encerrar();
+    const v = vehicles.find((x) => x.id === fim?.vehicleId);
+    if (!fim || !v) return;
+    const anterior = v.odometroAtual ?? 0;
+    const novo = Math.round(fim.base + fim.distancia);
+    const resumo = `${num(fim.distancia, 1)} km rodados`;
+    if (novo <= anterior) {
+      toast.info("Viagem encerrada", { description: resumo });
+      return;
+    }
+    try {
+      const salvo = await updateOdometro(v.id, novo);
+      setVehicles((prev) => prev.map((x) => (x.id === v.id ? salvo : x)));
+      setOdometros((p) => ({ ...p, [v.id]: novo }));
+      toast.success("Viagem encerrada", {
+        description: `${resumo} · odômetro ${novo.toLocaleString("pt-BR")} km`,
+      });
+    } catch {
+      toast.error("Não foi possível salvar o odômetro da viagem.", {
+        description: `Anote e atualize à mão: ${novo.toLocaleString("pt-BR")} km.`,
+      });
+    }
+  }
+
   async function sair() {
     await supabase?.auth.signOut();
   }
@@ -313,7 +361,7 @@ function Dashboard() {
         vehicles={vehicles}
         onSelectVehicle={setVehicleId}
         tanque={tanqueVirtual}
-        odometro={odoVigente}
+        odometro={Math.floor(odoAoVivo)}
         ultimoOdometro={ultimoOdometro}
         custoPorKm={metrics?.custoPorKm}
         refuels={doVeiculo}
@@ -321,6 +369,19 @@ function Dashboard() {
         onAddRefuel={adicionarAbastecimento}
         onSaveOdometro={salvarOdometro}
         onDetalhes={() => setTela("detalhes")}
+        viagem={
+          viagem
+            ? {
+                distancia: viagem.distancia,
+                segundos: gps.segundos,
+                velocidade: gps.velocidade,
+                erro: gps.erro,
+              }
+            : null
+        }
+        erroGps={gps.erro}
+        onIniciarViagem={iniciarViagem}
+        onEncerrarViagem={encerrarViagem}
       />
     );
   }
