@@ -21,6 +21,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { RefuelForm } from "@/components/fuel/RefuelForm";
+import { CalculoAutonomia } from "@/components/fuel/CalculoAutonomia";
 import { CockpitMap } from "@/components/fuel/CockpitMap";
 import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
 import { getTipoByModeloCompleto } from "@/lib/vehicle-database";
@@ -89,6 +90,7 @@ export function Cockpit({
 }: Props) {
   const [abastecer, setAbastecer] = useState(false);
   const [atualizarKm, setAtualizarKm] = useState(false);
+  const [calculo, setCalculo] = useState(false);
   const modoCarro = useModoCarro();
   const hora = useRelogio();
   const [tema, alternarTema] = useTema();
@@ -175,15 +177,20 @@ export function Cockpit({
               </p>
             </>
           ) : (
-            <>
-              <p className="text-[clamp(3rem,min(22vw,19dvh),8rem)] font-light leading-none tracking-tight tabular-nums">
+            <button
+              type="button"
+              onClick={() => setCalculo(true)}
+              className="flex flex-col items-center gap-1"
+              title="Como calculei"
+            >
+              <span className="text-[clamp(3rem,min(22vw,19dvh),8rem)] font-light leading-none tracking-tight tabular-nums">
                 {num(tanque.autonomia ?? 0, 0)}
                 <span className="ml-1 text-[0.28em] font-normal text-[var(--t-dim)]">km</span>
-              </p>
-              <p className="text-xs font-medium uppercase tracking-[0.25em] text-[var(--t-dim)]">
-                autonomia
-              </p>
-            </>
+              </span>
+              <span className="text-xs font-medium uppercase tracking-[0.25em] text-[var(--t-dim)]">
+                {tanque.calibrado ? "autonomia" : "autonomia · sem calibração"}
+              </span>
+            </button>
           )}
 
           <div className="tesla-car mt-2 w-[min(78%,22rem)] landscape:mt-0 landscape:w-[min(60%,9rem)]">
@@ -225,7 +232,7 @@ export function Cockpit({
       </section>
 
       {/* Mapa */}
-      <section className="relative min-h-0">
+      <section className="relative isolate min-h-0">
         <CockpitMap tema={tema} trilha={trilha} className="absolute inset-0" />
 
         {tanque.emReserva || tanque.atencao ? (
@@ -319,6 +326,20 @@ export function Cockpit({
                 return ok;
               }}
             />
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      <Drawer open={calculo} onOpenChange={setCalculo}>
+        <DrawerContent className="max-h-[92dvh]">
+          <div className="mx-auto w-full max-w-lg overflow-y-auto p-5">
+            <DrawerHeader className="p-0 pb-4 text-left">
+              <DrawerTitle className="font-display text-xl">Como calculei a autonomia</DrawerTitle>
+              <DrawerDescription>
+                Desde o último tanque cheio: o que entrou, o que foi rodado e quanto sobrou.
+              </DrawerDescription>
+            </DrawerHeader>
+            <CalculoAutonomia tanque={tanque} />
           </div>
         </DrawerContent>
       </Drawer>

@@ -5,6 +5,8 @@ import { haversineKm, type LatLng } from "@/lib/geo";
 const PRECISAO_MAX_M = 50;
 /** Deslocamento mínimo entre pontos (km): abaixo disso é ruído com o carro parado. */
 const PASSO_MIN_KM = 0.005;
+/** Abaixo disso (m/s, ~5 km/h) o carro está parado: a posição só oscila. */
+const VELOCIDADE_PARADO_MS = 1.4;
 /** Velocidade implícita acima disso é salto de GPS, não deslocamento real. */
 const VELOCIDADE_MAX_KMH = 220;
 
@@ -67,8 +69,12 @@ export function useViagemGps(opts: { onPonto?: (pt: LatLng) => void } = {}) {
     const pt: LatLng = [pos.coords.latitude, pos.coords.longitude];
     const prev = ultimoRef.current;
     if (prev) {
+      // Parado, o GPS "anda" alguns metros a cada leitura; somar isso inventa km.
+      // Pular o ponto não perde distância: o próximo mede a partir do último aceito.
+      if (pos.coords.speed != null && pos.coords.speed < VELOCIDADE_PARADO_MS) return;
       const d = haversineKm(prev.pt, pt);
-      if (d < PASSO_MIN_KM) return;
+      // O passo precisa superar a incerteza da leitura, senão é oscilação.
+      if (d < Math.max(PASSO_MIN_KM, pos.coords.accuracy / 1000)) return;
       const horas = (pos.timestamp - prev.t) / 3_600_000;
       if (horas > 0 && d / horas > VELOCIDADE_MAX_KMH) return;
       const nova = { ...atual, distancia: atual.distancia + d };

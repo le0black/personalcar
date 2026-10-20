@@ -121,8 +121,7 @@ export function dataLocalISO(d = new Date()): string {
   return `${y}-${m}-${dia}`;
 }
 
-export const brl = (n: number) =>
-  n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+export const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const num = (n: number, d = 1) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -347,7 +346,13 @@ export function estimarCombustivel(args: {
   // Litros consumidos estimados desde o início da vida operacional.
   const odoBase = odometroInicial ?? rows[0]?.odometro ?? null;
   let litrosConsumidos: number | null = null;
-  if (consumo && consumo > 0 && odoBase != null && odometroAtual != null && odometroAtual > odoBase) {
+  if (
+    consumo &&
+    consumo > 0 &&
+    odoBase != null &&
+    odometroAtual != null &&
+    odometroAtual > odoBase
+  ) {
     litrosConsumidos = Number(((odometroAtual - odoBase) / consumo).toFixed(1));
   }
 
@@ -392,6 +397,28 @@ const JANELA_RECENTE_HIST = 5;
 
 export type ConsumoAdaptativo = { valor: number | null; confianca: Confianca | null };
 
+/** Faixa plausível do consumo de um trecho em relação à base (ref. do modelo ou mediana). */
+const FAIXA_PLAUSIVEL = { min: 0.5, max: 1.6 };
+
+/**
+ * Remove trechos com consumo impossível, quase sempre um parcial salvo como
+ * tanque cheio (poucos litros fechando muitos km). Sem isso, um registro errado
+ * puxa a média para cima e a autonomia inteira fica otimista.
+ * Base: consumo de referência do modelo; sem ela, a mediana (com 3+ trechos).
+ */
+function semTrechosImpossiveis(ints: Intervalo[], referencia?: number | null): Intervalo[] {
+  let base = referencia && referencia > 0 ? referencia : null;
+  if (!base && ints.length >= 3) {
+    const ord = ints.map((x) => x.consumo).sort((a, b) => a - b);
+    base = ord[Math.floor(ord.length / 2)]!;
+  }
+  if (!base) return ints;
+  const validos = ints.filter(
+    (x) => x.consumo >= base * FAIXA_PLAUSIVEL.min && x.consumo <= base * FAIXA_PLAUSIVEL.max,
+  );
+  return validos.length > 0 ? validos : ints;
+}
+
 /**
  * Consumo (km/l) para o medidor virtual, priorizando medições recentes.
  * Cai para o consumo de referência do cadastro (baixa confiança) quando não há
@@ -401,9 +428,10 @@ export function consumoAdaptativo(
   metrics: Metrics | null,
   referenciaMisto?: number | null,
 ): ConsumoAdaptativo {
-  const ints = metrics?.intervalos ?? [];
+  const ints = semTrechosImpossiveis(metrics?.intervalos ?? [], referenciaMisto);
   if (ints.length === 0) {
-    if (referenciaMisto && referenciaMisto > 0) return { valor: referenciaMisto, confianca: "baixa" };
+    if (referenciaMisto && referenciaMisto > 0)
+      return { valor: referenciaMisto, confianca: "baixa" };
     return { valor: null, confianca: null };
   }
   const aggr = (arr: Intervalo[]) => {
@@ -421,7 +449,11 @@ export function consumoAdaptativo(
 
   const cheio = metrics?.confianca === "alta";
   const confianca: Confianca =
-    cheio && ints.length >= 2 ? "alta" : cheio || metrics?.confianca === "media" ? "media" : "baixa";
+    cheio && ints.length >= 2
+      ? "alta"
+      : cheio || metrics?.confianca === "media"
+        ? "media"
+        : "baixa";
   return { valor: Number(valor.toFixed(2)), confianca };
 }
 
@@ -431,6 +463,8 @@ export type EventoTanque = {
   data?: string;
   litros: number; // positivo abastece, negativo consome
   saldo: number; // saldo estimado após o evento
+  /** Marcado como tanque cheio, mas os litros não completariam o tanque. */
+  suspeito?: boolean;
 };
 
 export type TanqueVirtual = {
@@ -443,8 +477,13 @@ export type TanqueVirtual = {
   confianca: Confianca | null;
   consumoUtilizado: number | null;
   semDados: boolean; // sem consumo para estimar
+  /** Há um tanque cheio no histórico: antes dele o conteúdo inicial é desconhecido. */
+  calibrado: boolean;
   extrato: EventoTanque[];
 };
+
+/** Abaixo desta fração da capacidade, um "tanque cheio" é suspeito de ser parcial. */
+const CHEIO_MINIMO = 0.75;
 
 /**
  * Estima o combustível no tanque a partir da sequência de eventos (fold):
@@ -472,6 +511,7 @@ export function computeTanqueVirtual(args: {
     confianca: consumo.confianca,
     consumoUtilizado: cu,
     semDados: true,
+    calibrado: false,
     extrato: [],
   };
   if (!cu || cu <= 0 || capacidade <= 0) return vazio;
@@ -480,7 +520,10 @@ export function computeTanqueVirtual(args: {
     (a, b) => a.odometro - b.odometro || a.data.localeCompare(b.data),
   );
 
+  // Antes do primeiro tanque cheio não se sabe o que havia no tanque: parte de 0
+  // e a estimativa fica marcada como não calibrada.
   let saldo = 0;
+  let calibrado = false;
   let prevOdo: number | null = null;
   const extrato: EventoTanque[] = [];
   for (const r of rows) {
@@ -497,11 +540,16 @@ export function computeTanqueVirtual(args: {
         });
       }
     }
+    const antes = saldo;
     saldo = Math.min(capacidade, saldo + r.litros);
     let tipo: EventoTanque["tipo"] = "REFUEL";
+    let suspeito = false;
     if (r.tanqueCheio) {
+      // Só dá para julgar com o saldo conhecido (depois de uma calibração).
+      suspeito = calibrado && antes + r.litros < capacidade * CHEIO_MINIMO;
       saldo = capacidade; // calibração: completou o tanque
       tipo = "CALIBRACAO";
+      calibrado = true;
     }
     extrato.push({
       tipo,
@@ -509,6 +557,7 @@ export function computeTanqueVirtual(args: {
       data: r.data,
       litros: r.litros,
       saldo: Number(saldo.toFixed(2)),
+      ...(suspeito ? { suspeito } : {}),
     });
     prevOdo = r.odometro;
   }
@@ -530,10 +579,9 @@ export function computeTanqueVirtual(args: {
   const emReserva = reserva > 0 ? saldo <= reserva : pct <= 10;
   const atencao = !emReserva && pct <= 25;
 
-  // Confiança do medidor: exige uma calibração recente para ser alta.
-  const temCalibracao = extrato.some((e) => e.tipo === "CALIBRACAO");
+  // Confiança do medidor: sem calibração o ponto de partida é chutado (0 L).
   let confianca: Confianca = consumo.confianca ?? "baixa";
-  if (confianca === "alta" && !temCalibracao) confianca = "media";
+  if (!calibrado) confianca = "baixa";
 
   return {
     litros,
@@ -545,6 +593,7 @@ export function computeTanqueVirtual(args: {
     confianca,
     consumoUtilizado: cu,
     semDados: false,
+    calibrado,
     extrato,
   };
 }
@@ -555,7 +604,8 @@ export function computeTanqueVirtual(args: {
  * para o usuário confirmar. `consumoMedio` é a média histórica (km/l).
  */
 export function detectarAnomalias(args: {
-  novo: Pick<Refuel, "odometro" | "litros" | "precoLitro" | "valorTotal" | "data">;
+  novo: Pick<Refuel, "odometro" | "litros" | "precoLitro" | "valorTotal" | "data"> &
+    Partial<Pick<Refuel, "tanqueCheio">>;
   refuels: Refuel[];
   tanque: number;
   consumoMedio?: number | null | undefined;
@@ -601,12 +651,32 @@ export function detectarAnomalias(args: {
     }
   }
 
+  // Tanque cheio x parcial: compara os litros com o espaço vazio estimado.
+  if (consumoMedio && consumoMedio > 0 && tanque > 0 && refuels.length > 0) {
+    const est = computeTanqueVirtual({
+      refuels,
+      capacidade: tanque,
+      consumo: { valor: consumoMedio, confianca: null },
+      odometroAtual: novo.odometro,
+    });
+    if (est.calibrado && est.litros != null) {
+      const vazio = tanque - est.litros;
+      if (novo.tanqueCheio && est.litros + novo.litros < tanque * CHEIO_MINIMO) {
+        avisos.push(
+          `Marcado como tanque cheio, mas ${num(novo.litros, 1)} L parece pouco: a estimativa era de ~${num(vazio, 0)} L de espaço vazio. Se foi parcial, desmarque "Tanque cheio".`,
+        );
+      } else if (novo.tanqueCheio === false && novo.litros >= vazio * 0.95) {
+        avisos.push(
+          `${num(novo.litros, 1)} L é praticamente o espaço vazio estimado (~${num(vazio, 0)} L). Se encheu o tanque, marque "Tanque cheio" para calibrar o medidor.`,
+        );
+      }
+    }
+  }
+
   // Possível duplicado.
   if (refuels.some((r) => r.odometro === novo.odometro)) {
     avisos.push("Já existe um abastecimento com esse hodômetro.");
-  } else if (
-    refuels.some((r) => r.data === novo.data && Math.abs(r.litros - novo.litros) < 0.1)
-  ) {
+  } else if (refuels.some((r) => r.data === novo.data && Math.abs(r.litros - novo.litros) < 0.1)) {
     avisos.push("Parece um abastecimento duplicado (mesma data e litros de outro registro).");
   }
 

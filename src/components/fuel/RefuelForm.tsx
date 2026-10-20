@@ -59,7 +59,9 @@ export function RefuelForm({
   const [preco, setPreco] = useState("");
   const [combustivel, setCombustivel] = useState<FuelType>("Gasolina");
   const [posto, setPosto] = useState("");
-  const [tanqueCheio, setTanqueCheio] = useState(true);
+  // Desmarcado: um parcial salvo como cheio estraga o medidor; o contrário só
+  // perde uma calibração (e o aviso de anomalia sugere marcar).
+  const [tanqueCheio, setTanqueCheio] = useState(false);
   const [observacoes, setObservacoes] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -98,7 +100,9 @@ export function RefuelForm({
 
     if (!odo) return setErro("Informe o hodômetro.");
     if (odo <= ultimoOdometro)
-      return setErro(`O hodômetro deve ser maior que ${ultimoOdometro.toLocaleString("pt-BR")} km.`);
+      return setErro(
+        `O hodômetro deve ser maior que ${ultimoOdometro.toLocaleString("pt-BR")} km.`,
+      );
     if (!l || l <= 0) return setErro("Informe os litros abastecidos.");
     if ((!val || val <= 0) && (!pr || pr <= 0))
       return setErro("Informe o valor total ou o preço por litro.");
@@ -144,7 +148,7 @@ export function RefuelForm({
         setPreco("");
         setPosto("");
         setObservacoes("");
-        setTanqueCheio(true);
+        setTanqueCheio(false);
       }
     } finally {
       setEnviando(false);
@@ -252,7 +256,7 @@ export function RefuelForm({
         <span className="min-w-0 text-sm">
           <span className="font-medium">Tanque cheio</span>
           <span className="block text-xs text-muted-foreground">
-            Necessário entre dois abastecimentos para medir consumo com alta confiança.
+            Marque só se a bomba desarmou sozinha (completou). Calibra o medidor e a média.
           </span>
         </span>
       </label>
