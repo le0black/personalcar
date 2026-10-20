@@ -125,17 +125,7 @@ export function Cockpit({
       {/* Lado do carro */}
       <section className="flex min-h-0 flex-col gap-3 bg-[var(--t-panel)] px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] landscape:gap-2 landscape:py-3">
         <header className="flex items-center justify-between text-sm font-medium">
-          <span className="flex shrink-0 items-baseline gap-3">
-            <Marchas ativa={movendo ? "D" : "P"} />
-            {viagem ? (
-              <span className="hidden whitespace-nowrap tabular-nums text-[var(--t-dim)] landscape:inline">
-                <span className="text-xl font-light text-[var(--t-text)]">
-                  {viagem.velocidade != null ? num(viagem.velocidade, 0) : "—"}
-                </span>{" "}
-                km/h
-              </span>
-            ) : null}
-          </span>
+          <Marchas ativa={movendo ? "D" : "P"} />
           <div className="flex min-w-0 items-center gap-3 text-[var(--t-dim)]">
             <button
               type="button"
@@ -156,17 +146,8 @@ export function Cockpit({
           </div>
         </header>
 
-        {/* Velocidade (só em viagem) e autonomia */}
+        {/* Autonomia */}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 overflow-hidden text-center">
-          {viagem ? (
-            <p className="text-sm font-medium tabular-nums text-[var(--t-dim)] landscape:hidden">
-              <span className="text-2xl font-light text-[var(--t-text)]">
-                {viagem.velocidade != null ? num(viagem.velocidade, 0) : "—"}
-              </span>{" "}
-              km/h
-            </p>
-          ) : null}
-
           {semDados ? (
             <>
               <p className="text-[clamp(3.5rem,min(18vw,16dvh),6.5rem)] font-light leading-none">
@@ -242,7 +223,7 @@ export function Cockpit({
         <CockpitMap tema={tema} trilha={trilha} className="absolute inset-0" />
 
         {tanque.emReserva || tanque.atencao ? (
-          <div className="pointer-events-none absolute inset-x-0 top-3 z-[500] flex justify-center px-4">
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-[500] flex justify-start px-3 landscape:justify-center landscape:px-4">
             <p
               className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg"
               style={{ background: tanque.emReserva ? "var(--t-red)" : "#b07d00" }}
@@ -251,6 +232,13 @@ export function Cockpit({
               {tanque.emReserva ? "Abasteça agora" : "Abastecer em breve"}
             </p>
           </div>
+        ) : null}
+
+        {viagem ? (
+          <Velocimetro
+            kmh={viagem.velocidade}
+            className="absolute right-3 top-3 z-[500] size-24 landscape:bottom-3 landscape:top-auto landscape:size-28"
+          />
         ) : null}
 
         {viagem ? (
@@ -362,6 +350,56 @@ export function Cockpit({
           />
         </DrawerContent>
       </Drawer>
+    </div>
+  );
+}
+
+/** Fundo de escala do velocímetro (km/h). */
+const VELOC_MAX = 160;
+
+/**
+ * Velocímetro pequeno, circular, sobre o mapa: arco de 270° que acende em azul
+ * conforme a velocidade do GPS, com o número no centro.
+ */
+function Velocimetro({ kmh, className }: { kmh: number | null; className?: string }) {
+  const v = kmh != null ? Math.max(0, kmh) : null;
+  const frac = v != null ? Math.min(1, v / VELOC_MAX) : 0;
+  const ARCO = 75; // 270° de 360°, em pathLength 100
+  return (
+    <div
+      className={`grid place-items-center rounded-full border border-[var(--t-line)] bg-[var(--t-glass)] shadow-xl backdrop-blur-md ${className ?? ""}`}
+      role="img"
+      aria-label={v != null ? `${Math.round(v)} km/h` : "Velocidade indisponível"}
+    >
+      <svg viewBox="0 0 100 100" className="col-start-1 row-start-1 size-full p-1.5">
+        <g transform="rotate(135 50 50)" fill="none" strokeLinecap="round" strokeWidth="6">
+          <circle
+            cx="50"
+            cy="50"
+            r="42"
+            pathLength={100}
+            stroke="var(--t-line)"
+            strokeDasharray={`${ARCO} 100`}
+          />
+          <circle
+            cx="50"
+            cy="50"
+            r="42"
+            pathLength={100}
+            stroke="var(--t-blue)"
+            strokeDasharray={`${ARCO * frac} 100`}
+            className="transition-[stroke-dasharray] duration-700 ease-out"
+          />
+        </g>
+      </svg>
+      <div className="col-start-1 row-start-1 flex flex-col items-center leading-none">
+        <span className="text-[1.9rem] font-light tabular-nums landscape:text-[2.2rem]">
+          {v != null ? Math.round(v) : "—"}
+        </span>
+        <span className="mt-0.5 text-[0.6rem] font-medium uppercase tracking-[0.15em] text-[var(--t-dim)]">
+          km/h
+        </span>
+      </div>
     </div>
   );
 }

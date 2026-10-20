@@ -77,6 +77,8 @@ export function useViagemGps(opts: { onPonto?: (pt: LatLng) => void } = {}) {
       if (d < Math.max(PASSO_MIN_KM, pos.coords.accuracy / 1000)) return;
       const horas = (pos.timestamp - prev.t) / 3_600_000;
       if (horas > 0 && d / horas > VELOCIDADE_MAX_KMH) return;
+      // Sem velocidade do GPS (alguns aparelhos), estima pelo trecho percorrido.
+      if (pos.coords.speed == null && horas > 0) setVelocidade(d / horas);
       const nova = { ...atual, distancia: atual.distancia + d };
       viagemRef.current = nova;
       setViagem(nova);
