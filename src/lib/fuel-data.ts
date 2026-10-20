@@ -479,6 +479,10 @@ export type TanqueVirtual = {
   semDados: boolean; // sem consumo para estimar
   /** Há um tanque cheio no histórico: antes dele o conteúdo inicial é desconhecido. */
   calibrado: boolean;
+  /** Quanto dava para rodar logo após o último abastecimento (km). */
+  autonomiaAoAbastecer: number | null;
+  /** Km rodados desde o último abastecimento (odômetro atual − do abastecimento). */
+  kmDesdeAbastecimento: number | null;
   extrato: EventoTanque[];
 };
 
@@ -512,6 +516,8 @@ export function computeTanqueVirtual(args: {
     consumoUtilizado: cu,
     semDados: true,
     calibrado: false,
+    autonomiaAoAbastecer: null,
+    kmDesdeAbastecimento: null,
     extrato: [],
   };
   if (!cu || cu <= 0 || capacidade <= 0) return vazio;
@@ -562,13 +568,17 @@ export function computeTanqueVirtual(args: {
     prevOdo = r.odometro;
   }
 
-  // Consumo do último abastecimento até o hodômetro atual.
-  if (odometroAtual != null && prevOdo != null && odometroAtual > prevOdo) {
-    const c = (odometroAtual - prevOdo) / cu;
+  // Autonomia = o que dava para rodar logo após o último abastecimento, menos
+  // os km rodados desde então: cai 1 km a cada km do odômetro (ao vivo com o GPS).
+  const autonomiaAoAbastecer = prevOdo != null ? Math.round(saldo * cu) : null;
+  const kmDesdeAbastecimento =
+    odometroAtual != null && prevOdo != null ? Math.max(0, odometroAtual - prevOdo) : null;
+  if (kmDesdeAbastecimento && prevOdo != null) {
+    const c = kmDesdeAbastecimento / cu;
     saldo = Math.max(0, saldo - c);
     extrato.push({
       tipo: "CONSUMO",
-      odometro: odometroAtual,
+      odometro: prevOdo + kmDesdeAbastecimento,
       litros: -Number(c.toFixed(2)),
       saldo: Number(saldo.toFixed(2)),
     });
@@ -586,7 +596,10 @@ export function computeTanqueVirtual(args: {
   return {
     litros,
     pct,
-    autonomia: Number((saldo * cu).toFixed(0)),
+    autonomia:
+      autonomiaAoAbastecer != null
+        ? Math.max(0, Math.round(autonomiaAoAbastecer - (kmDesdeAbastecimento ?? 0)))
+        : Number((saldo * cu).toFixed(0)),
     autonomiaAteReserva: Number((Math.max(0, saldo - reserva) * cu).toFixed(0)),
     emReserva,
     atencao,
@@ -594,6 +607,8 @@ export function computeTanqueVirtual(args: {
     consumoUtilizado: cu,
     semDados: false,
     calibrado,
+    autonomiaAoAbastecer,
+    kmDesdeAbastecimento,
     extrato,
   };
 }

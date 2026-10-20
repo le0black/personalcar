@@ -56,8 +56,15 @@ export function CalculoAutonomia({ tanque }: { tanque: TanqueVirtual }) {
       </ol>
 
       <div className="rounded-xl bg-secondary/60 p-3">
-        <p className="numeral text-base font-semibold">
-          {num(tanque.litros ?? 0, 1)} L × {num(cu, 1)} km/l = {km(tanque.autonomia ?? 0)}
+        {tanque.autonomiaAoAbastecer != null ? (
+          <p className="numeral text-base font-semibold">
+            {km(tanque.autonomiaAoAbastecer)} ao abastecer − {km(tanque.kmDesdeAbastecimento ?? 0)}{" "}
+            rodados = {km(tanque.autonomia ?? 0)}
+          </p>
+        ) : null}
+        <p className="numeral mt-1 text-xs text-muted-foreground">
+          Ao abastecer: {num(passos[0] ? ultimoSaldo(passos) : 0, 1)} L × {num(cu, 1)} km/l. Cada km
+          do odômetro (ou do GPS em viagem) desconta 1 km da autonomia.
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           {num(cu, 1)} km/l é a média ponderada dos seus trechos medidos (mais peso aos recentes)
@@ -66,6 +73,12 @@ export function CalculoAutonomia({ tanque }: { tanque: TanqueVirtual }) {
       </div>
     </div>
   );
+}
+
+/** Saldo logo após o último abastecimento (antes do consumo até agora). */
+function ultimoSaldo(passos: EventoTanque[]) {
+  const abast = passos.filter((e) => e.tipo !== "CONSUMO");
+  return abast[abast.length - 1]?.saldo ?? 0;
 }
 
 function Passo({

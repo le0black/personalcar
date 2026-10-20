@@ -190,6 +190,12 @@ export function Cockpit({
               <span className="text-xs font-medium uppercase tracking-[0.25em] text-[var(--t-dim)]">
                 {tanque.calibrado ? "autonomia" : "autonomia · sem calibração"}
               </span>
+              {tanque.autonomiaAoAbastecer != null && tanque.kmDesdeAbastecimento ? (
+                <span className="text-xs tabular-nums text-[var(--t-dim)]">
+                  {num(tanque.autonomiaAoAbastecer, 0)} km ao abastecer −{" "}
+                  {num(tanque.kmDesdeAbastecimento, 0)} rodados
+                </span>
+              ) : null}
             </button>
           )}
 
