@@ -46,6 +46,8 @@ export function useViagemGps(opts: { onPonto?: (pt: LatLng) => void } = {}) {
   const [velocidade, setVelocidade] = useState<number | null>(null);
   const [segundos, setSegundos] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
+  /** Pontos aceitos da viagem atual (para desenhar o trajeto no mapa). */
+  const [trilha, setTrilha] = useState<LatLng[]>([]);
 
   const viagemRef = useRef<ViagemSalva | null>(null);
   const ultimoRef = useRef<{ pt: LatLng; t: number } | null>(null);
@@ -75,6 +77,7 @@ export function useViagemGps(opts: { onPonto?: (pt: LatLng) => void } = {}) {
       gravar(nova);
     }
     ultimoRef.current = { pt, t: pos.timestamp };
+    setTrilha((t) => [...t, pt]);
     onPontoRef.current?.(pt);
   }, []);
 
@@ -128,6 +131,7 @@ export function useViagemGps(opts: { onPonto?: (pt: LatLng) => void } = {}) {
       viagemRef.current = nova;
       setViagem(nova);
       setSegundos(0);
+      setTrilha([]);
       gravar(nova);
       assistir();
       return true;
@@ -141,9 +145,10 @@ export function useViagemGps(opts: { onPonto?: (pt: LatLng) => void } = {}) {
     const fim = viagemRef.current;
     viagemRef.current = null;
     setViagem(null);
+    setTrilha([]);
     gravar(null);
     return fim;
   }, [soltar]);
 
-  return { viagem, velocidade, segundos, erro, iniciar, encerrar };
+  return { viagem, velocidade, segundos, erro, trilha, iniciar, encerrar };
 }

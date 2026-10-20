@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
-  ChevronRight,
   Fuel,
   Gauge,
   LayoutList,
   Maximize,
   Minimize,
+  Moon,
   Navigation,
   Square,
+  Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,10 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { RefuelForm } from "@/components/fuel/RefuelForm";
-import { FuelTank, SEGMENTOS, Segmentos, corFaixa, type Faixa } from "@/components/fuel/FuelTank";
+import { CockpitMap } from "@/components/fuel/CockpitMap";
+import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
+import { getTipoByModeloCompleto } from "@/lib/vehicle-database";
+import type { LatLng } from "@/lib/geo";
 import {
   brl,
   num,
@@ -46,6 +50,8 @@ type Props = {
   onDetalhes: () => void;
   /** Viagem pelo GPS em andamento (null quando parada). */
   viagem: ViagemAoVivo | null;
+  /** Trajeto da viagem, para o mapa. */
+  trilha: LatLng[];
   erroGps: string | null;
   onIniciarViagem: () => void;
   onEncerrarViagem: () => Promise<void> | void;
@@ -59,8 +65,8 @@ export type ViagemAoVivo = {
 };
 
 /**
- * Painel de apoio ao visor do carro: só o que se lê de relance dirigindo
- * (nível, autonomia, alerta) e duas ações grandes. O resto fica em "Detalhes".
+ * Painel de apoio ao visor do carro, inspirado na tela do Tesla: à esquerda o
+ * carro com a autonomia em destaque, à direita o mapa, embaixo o dock de ações.
  */
 export function Cockpit({
   vehicle,
@@ -76,6 +82,7 @@ export function Cockpit({
   onSaveOdometro,
   onDetalhes,
   viagem,
+  trilha,
   erroGps,
   onIniciarViagem,
   onEncerrarViagem,
@@ -84,19 +91,22 @@ export function Cockpit({
   const [atualizarKm, setAtualizarKm] = useState(false);
   const modoCarro = useModoCarro();
   const hora = useRelogio();
+  const [tema, alternarTema] = useTema();
 
   const semDados = tanque.semDados || tanque.litros == null || tanque.pct == null;
   const pct = tanque.pct ?? 0;
-  const faixa: Faixa = tanque.emReserva ? "reserva" : tanque.atencao ? "atencao" : "normal";
-  const reservaPct =
-    vehicle.reservaLitros && vehicle.tanque > 0
-      ? (vehicle.reservaLitros / vehicle.tanque) * 100
-      : null;
+  const cor = tanque.emReserva
+    ? "var(--t-red)"
+    : tanque.atencao
+      ? "var(--t-amber)"
+      : "var(--t-green)";
+  const movendo = viagem != null && (viagem.velocidade ?? 0) > 3;
 
   async function iniciarViagem() {
-    // A tela precisa ficar ligada: com ela apagada o navegador pausa o GPS.
-    if (!modoCarro.ativo) await modoCarro.alternar();
     onIniciarViagem();
+    // A tela precisa ficar ligada: com ela apagada o navegador pausa o GPS.
+    // Vem depois para uma tela cheia negada ou lenta não segurar a viagem.
+    if (!modoCarro.ativo) await modoCarro.alternar();
   }
 
   function proximoVeiculo() {
@@ -106,161 +116,189 @@ export function Cockpit({
   }
 
   return (
-    <main
-      className="mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6 landscape:grid landscape:h-[100dvh] landscape:grid-cols-[minmax(0,1fr)_14rem] landscape:grid-rows-[auto_minmax(0,1fr)] landscape:gap-3 landscape:py-3"
-      style={{ "--fuel": corFaixa[faixa] } as React.CSSProperties}
+    <div
+      className="tesla grid h-[100dvh] w-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden landscape:grid-cols-[minmax(17rem,38%)_minmax(0,1fr)] landscape:grid-rows-[minmax(0,1fr)_auto]"
+      data-tema={tema}
     >
-      {/* Barra superior mínima */}
-      <header className="flex items-center justify-between gap-3 landscape:col-span-2">
-        <button
-          type="button"
-          onClick={proximoVeiculo}
-          className="flex min-w-0 items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold"
-          title={
-            viagem
-              ? "Encerre a viagem para trocar"
-              : vehicles.length > 1
-                ? "Trocar de veículo"
-                : vehicle.modelo
-          }
-        >
-          <span className="truncate">{vehicle.nome}</span>
-          {vehicles.length > 1 && !viagem ? (
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      {/* Lado do carro */}
+      <section className="flex min-h-0 flex-col gap-3 bg-[var(--t-panel)] px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] landscape:gap-2 landscape:py-3">
+        <header className="flex items-center justify-between text-sm font-medium">
+          <span className="flex shrink-0 items-baseline gap-3">
+            <Marchas ativa={movendo ? "D" : "P"} />
+            {viagem ? (
+              <span className="hidden whitespace-nowrap tabular-nums text-[var(--t-dim)] landscape:inline">
+                <span className="text-xl font-light text-[var(--t-text)]">
+                  {viagem.velocidade != null ? num(viagem.velocidade, 0) : "—"}
+                </span>{" "}
+                km/h
+              </span>
+            ) : null}
+          </span>
+          <div className="flex min-w-0 items-center gap-3 text-[var(--t-dim)]">
+            <button
+              type="button"
+              onClick={proximoVeiculo}
+              className="truncate font-medium disabled:cursor-default"
+              disabled={vehicles.length < 2 || viagem != null}
+              title={viagem ? "Encerre a viagem para trocar" : "Trocar de veículo"}
+            >
+              {vehicle.nome}
+            </button>
+            {viagem ? (
+              <span className="flex items-center gap-1.5 text-[var(--t-blue)]">
+                <span className="size-1.5 animate-pulse rounded-full bg-current" />
+                <span className="landscape:sr-only">GPS</span>
+              </span>
+            ) : null}
+            <span className="tabular-nums text-[var(--t-text)]">{hora}</span>
+          </div>
+        </header>
+
+        {/* Velocidade (só em viagem) e autonomia */}
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 overflow-hidden text-center">
+          {viagem ? (
+            <p className="text-sm font-medium tabular-nums text-[var(--t-dim)] landscape:hidden">
+              <span className="text-2xl font-light text-[var(--t-text)]">
+                {viagem.velocidade != null ? num(viagem.velocidade, 0) : "—"}
+              </span>{" "}
+              km/h
+            </p>
           ) : null}
-        </button>
-        <span className="numeral text-lg font-semibold text-muted-foreground">{hora}</span>
-        <div className="flex shrink-0 items-center gap-2">
-          <IconButton
-            label={modoCarro.ativo ? "Sair do modo carro" : "Modo carro (tela cheia, sem apagar)"}
-            onClick={modoCarro.alternar}
-            ativo={modoCarro.ativo}
-          >
-            {modoCarro.ativo ? <Minimize className="size-5" /> : <Maximize className="size-5" />}
-          </IconButton>
-          <IconButton label="Detalhes, histórico e gráficos" onClick={onDetalhes}>
-            <LayoutList className="size-5" />
-          </IconButton>
-        </div>
-      </header>
 
-      {/* Leitura principal */}
-      <section className="panel flex flex-1 flex-col items-center justify-center gap-6 p-5 sm:p-8 landscape:min-h-0 landscape:flex-row landscape:gap-8 landscape:p-5">
-        <FuelTank
-          pct={semDados ? 0 : pct}
-          faixa={faixa}
-          reservaPct={reservaPct}
-          segmentos={false}
-          tankClassName="h-[34dvh] min-h-44 max-h-80 w-[min(40vw,11rem)] landscape:h-[min(60dvh,20rem)] landscape:min-h-32 landscape:w-32"
-        />
-
-        <div className="flex w-full min-w-0 max-w-md flex-col items-center gap-4 text-center landscape:items-start landscape:text-left">
           {semDados ? (
             <>
-              <p className="font-display text-2xl font-bold">Sem estimativa ainda</p>
-              <p className="text-sm text-muted-foreground">
-                Registre um abastecimento (de preferência com tanque cheio) para o painel calcular o
-                nível e a autonomia.
+              <p className="text-[clamp(3.5rem,min(18vw,16dvh),6.5rem)] font-light leading-none">
+                —
+              </p>
+              <p className="max-w-[16rem] text-sm text-[var(--t-dim)]">
+                Registre um abastecimento com tanque cheio para calcular a autonomia.
               </p>
             </>
           ) : (
             <>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Autonomia
-                </p>
-                <p
-                  className="numeral font-display font-bold leading-none"
-                  style={{ color: "var(--fuel)", fontSize: "clamp(3rem, min(16vw, 22dvh), 7rem)" }}
-                >
-                  {num(tanque.autonomia ?? 0, 0)}
-                  <span className="ml-2 text-[0.35em] font-semibold text-muted-foreground">km</span>
-                </p>
-                {vehicle.reservaLitros && !tanque.emReserva ? (
-                  <p className="numeral mt-1 text-sm text-muted-foreground">
-                    {num(tanque.autonomiaAteReserva ?? 0, 0)} km até a reserva
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="w-full">
-                <Segmentos acesos={Math.round((pct / 100) * SEGMENTOS)} className="h-6" />
-                <p className="numeral mt-2 text-lg font-semibold">
-                  {num(tanque.litros ?? 0, 1)} L
-                  <span className="ml-2 text-muted-foreground">· {pct}%</span>
-                </p>
-              </div>
+              <p className="text-[clamp(3rem,min(22vw,19dvh),8rem)] font-light leading-none tracking-tight tabular-nums">
+                {num(tanque.autonomia ?? 0, 0)}
+                <span className="ml-1 text-[0.28em] font-normal text-[var(--t-dim)]">km</span>
+              </p>
+              <p className="text-xs font-medium uppercase tracking-[0.25em] text-[var(--t-dim)]">
+                autonomia
+              </p>
             </>
           )}
 
-          {viagem ? <PainelViagem viagem={viagem} /> : null}
-
-          {tanque.emReserva ? (
-            <p className="flex items-center gap-2 rounded-xl bg-destructive/15 px-4 py-2.5 font-display text-lg font-bold text-destructive">
-              <AlertTriangle className="size-5 shrink-0" />
-              Abasteça agora
-            </p>
-          ) : tanque.atencao ? (
-            <p className="flex items-center gap-2 rounded-xl bg-warning/15 px-4 py-2.5 font-semibold text-warning">
-              <AlertTriangle className="size-5 shrink-0" />
-              Abastecer em breve
-            </p>
-          ) : null}
+          <div className="tesla-car mt-2 w-[min(78%,22rem)] landscape:mt-0 landscape:w-[min(60%,9rem)]">
+            <VehicleIllustration
+              tipo={getTipoByModeloCompleto(vehicle.modelo)}
+              className="h-auto w-full"
+            />
+          </div>
         </div>
-      </section>
 
-      {/* Coluna lateral no modo deitado: leituras secundárias + ações */}
-      <div className="flex flex-col gap-4 landscape:min-h-0 landscape:justify-between landscape:gap-3">
-        <section className="grid grid-cols-3 gap-2 text-center landscape:grid-cols-1">
+        {/* Combustível, no formato da bateria */}
+        <div className="grid gap-2">
+          <div className="flex items-baseline justify-between gap-3 text-sm">
+            <span className="flex items-center gap-1.5 font-medium">
+              <Fuel className="size-4" style={{ color: cor }} />
+              {semDados ? "—" : `${pct}%`}
+            </span>
+            <span className="truncate tabular-nums text-[var(--t-dim)]">
+              {semDados ? "" : `${num(tanque.litros ?? 0, 1)} L`}
+              {vehicle.reservaLitros && !semDados && !tanque.emReserva
+                ? ` · ${num(tanque.autonomiaAteReserva ?? 0, 0)} km até a reserva`
+                : ""}
+            </span>
+          </div>
+          <div className="tesla-bar" style={{ "--t-fill": cor } as React.CSSProperties}>
+            <span style={{ width: `${semDados ? 0 : pct}%` }} />
+          </div>
+        </div>
+
+        {/* Leituras secundárias */}
+        <dl className="grid grid-cols-3 divide-x divide-[var(--t-line)] border-t border-[var(--t-line)] pt-3 text-center landscape:pt-2">
           <Leitura
             valor={tanque.consumoUtilizado ? num(tanque.consumoUtilizado, 1) : "—"}
             unidade="km/l"
           />
-          <Leitura valor={(odometro || 0).toLocaleString("pt-BR")} unidade="odômetro" />
+          <Leitura valor={(odometro || 0).toLocaleString("pt-BR")} unidade="km total" />
           <Leitura valor={custoPorKm ? brl(custoPorKm) : "—"} unidade="por km" />
-        </section>
+        </dl>
+      </section>
 
-        {/* Ações grandes */}
-        <section className="grid grid-cols-2 gap-3 pb-[env(safe-area-inset-bottom)] landscape:gap-2">
-          {viagem ? (
-            <Button
-              size="lg"
-              variant="destructive"
-              className="col-span-2 h-16 rounded-2xl text-lg font-bold landscape:h-14"
-              onClick={() => void onEncerrarViagem()}
+      {/* Mapa */}
+      <section className="relative min-h-0">
+        <CockpitMap tema={tema} trilha={trilha} className="absolute inset-0" />
+
+        {tanque.emReserva || tanque.atencao ? (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-[500] flex justify-center px-4">
+            <p
+              className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg"
+              style={{ background: tanque.emReserva ? "var(--t-red)" : "#b07d00" }}
             >
-              <Square className="size-6" /> Encerrar viagem
-            </Button>
-          ) : (
-            <Button
-              size="lg"
-              className="col-span-2 h-16 rounded-2xl text-lg font-bold landscape:h-14"
-              onClick={() => void iniciarViagem()}
-            >
-              <Navigation className="size-6" /> Iniciar viagem
-            </Button>
-          )}
-          {erroGps && !viagem ? (
-            <p className="col-span-2 text-center text-sm text-destructive">{erroGps}</p>
-          ) : null}
-          <Button
-            size="lg"
-            variant="secondary"
-            className="h-14 rounded-2xl text-base font-bold landscape:h-12 landscape:px-2 landscape:text-sm"
-            onClick={() => setAbastecer(true)}
+              <AlertTriangle className="size-4" />
+              {tanque.emReserva ? "Abasteça agora" : "Abastecer em breve"}
+            </p>
+          </div>
+        ) : null}
+
+        {viagem ? (
+          <div className="absolute bottom-3 left-3 z-[500] rounded-2xl border border-[var(--t-line)] bg-[var(--t-glass)] px-4 py-3 shadow-xl backdrop-blur-md">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-[var(--t-dim)]">
+              {viagem.erro ?? "Viagem"}
+            </p>
+            <p className="mt-0.5 text-2xl font-light tabular-nums">
+              {num(viagem.distancia, 1)}
+              <span className="ml-1 text-sm text-[var(--t-dim)]">km</span>
+              <span className="ml-3 text-base text-[var(--t-dim)]">{duracao(viagem.segundos)}</span>
+            </p>
+          </div>
+        ) : erroGps ? (
+          <p className="absolute bottom-3 left-3 z-[500] rounded-xl bg-[var(--t-glass)] px-3 py-2 text-sm text-[var(--t-red)] backdrop-blur-md">
+            {erroGps}
+          </p>
+        ) : null}
+      </section>
+
+      {/* Dock */}
+      <nav className="flex items-center justify-between gap-0.5 border-t border-[var(--t-line)] bg-[var(--t-bg)] px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 landscape:col-span-2 landscape:py-1.5">
+        <DockButton label="Abasteci" onClick={() => setAbastecer(true)}>
+          <Fuel />
+        </DockButton>
+        <DockButton label="Odômetro" onClick={() => setAtualizarKm(true)}>
+          <Gauge />
+        </DockButton>
+
+        {viagem ? (
+          <button
+            type="button"
+            onClick={() => void onEncerrarViagem()}
+            className="flex h-12 items-center gap-2 rounded-full border-2 border-[var(--t-red)] px-4 text-sm font-semibold text-[var(--t-red)] landscape:h-11"
           >
-            <Fuel className="size-5" /> Abasteci
-          </Button>
-          <Button
-            size="lg"
-            variant="secondary"
-            className="h-14 rounded-2xl text-base font-bold landscape:h-12 landscape:px-2 landscape:text-sm"
-            onClick={() => setAtualizarKm(true)}
+            <Square className="size-4 fill-current" /> Encerrar
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void iniciarViagem()}
+            className="flex h-12 items-center gap-2 rounded-full bg-[var(--t-blue)] px-4 text-sm font-semibold text-white shadow-lg landscape:h-11"
           >
-            <Gauge className="size-5" /> Km
-          </Button>
-        </section>
-      </div>
+            <Navigation className="size-4 fill-current" /> Viagem
+          </button>
+        )}
+
+        <DockButton label={tema === "noite" ? "Tema claro" : "Tema escuro"} onClick={alternarTema}>
+          {tema === "noite" ? <Sun /> : <Moon />}
+        </DockButton>
+        <DockButton
+          label={modoCarro.ativo ? "Sair da tela cheia" : "Tela cheia, sem apagar"}
+          onClick={modoCarro.alternar}
+          ativo={modoCarro.ativo}
+        >
+          {modoCarro.ativo ? <Minimize /> : <Maximize />}
+        </DockButton>
+        <DockButton label="Detalhes" onClick={onDetalhes}>
+          <LayoutList />
+        </DockButton>
+      </nav>
 
       <Drawer open={abastecer} onOpenChange={setAbastecer}>
         <DrawerContent className="max-h-[92dvh]">
@@ -297,51 +335,39 @@ export function Cockpit({
           />
         </DrawerContent>
       </Drawer>
-    </main>
+    </div>
   );
 }
 
-/** Leitura da viagem: km rodados, tempo e velocidade do GPS. */
-function PainelViagem({ viagem }: { viagem: ViagemAoVivo }) {
-  const h = Math.floor(viagem.segundos / 3600);
-  const m = Math.floor((viagem.segundos % 3600) / 60);
-  const tempo = h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
+/** Seletor de marchas P R N D, como no topo da tela do Tesla. */
+function Marchas({ ativa }: { ativa: "P" | "D" }) {
   return (
-    <div className="w-full rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3">
-      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-        <span className="relative flex size-2">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
-          <span className="relative inline-flex size-2 rounded-full bg-primary" />
+    <span
+      className="flex gap-2.5 text-base font-semibold tracking-wide"
+      aria-label={`Marcha ${ativa}`}
+    >
+      {(["P", "R", "N", "D"] as const).map((m) => (
+        <span
+          key={m}
+          className={m === ativa ? "text-[var(--t-text)]" : "text-[var(--t-dim)] opacity-50"}
+        >
+          {m}
         </span>
-        {viagem.erro ? viagem.erro : "Viagem · GPS"}
-      </p>
-      <div className="numeral mt-1 flex items-baseline justify-between gap-3 font-display">
-        <span className="text-3xl font-bold">
-          {num(viagem.distancia, 1)}
-          <span className="ml-1 text-sm font-semibold text-muted-foreground">km</span>
-        </span>
-        <span className="text-lg font-semibold text-muted-foreground">{tempo}</span>
-        <span className="text-lg font-semibold">
-          {viagem.velocidade != null ? num(viagem.velocidade, 0) : "—"}
-          <span className="ml-1 text-xs text-muted-foreground">km/h</span>
-        </span>
-      </div>
-    </div>
+      ))}
+    </span>
   );
 }
 
 function Leitura({ valor, unidade }: { valor: string; unidade: string }) {
   return (
-    <div className="panel min-w-0 px-2 py-3 landscape:flex landscape:items-baseline landscape:justify-between landscape:gap-2 landscape:px-3 landscape:py-2">
-      <p className="numeral truncate font-display text-xl font-bold sm:text-2xl landscape:text-lg">
-        {valor}
-      </p>
-      <p className="truncate text-xs text-muted-foreground">{unidade}</p>
+    <div className="min-w-0 px-1">
+      <dd className="truncate text-lg font-normal tabular-nums">{valor}</dd>
+      <dt className="truncate text-xs text-[var(--t-dim)]">{unidade}</dt>
     </div>
   );
 }
 
-function IconButton({
+function DockButton({
   label,
   onClick,
   ativo,
@@ -358,15 +384,50 @@ function IconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`grid size-11 place-items-center rounded-full border transition-colors ${
+      className={`grid size-11 shrink-0 place-items-center rounded-xl transition-colors [&_svg]:size-6 ${
         ativo
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-card text-muted-foreground hover:text-foreground"
+          ? "bg-[var(--t-elev)] text-[var(--t-blue)]"
+          : "text-[var(--t-dim)] hover:bg-[var(--t-elev)] hover:text-[var(--t-text)]"
       }`}
     >
       {children}
     </button>
   );
+}
+
+function duracao(segundos: number) {
+  const h = Math.floor(segundos / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
+}
+
+/**
+ * Tema do painel: noite ou dia. Começa pela hora (6h–18h é dia), como o
+ * Tesla troca com os faróis; a escolha manual fica lembrada no aparelho.
+ */
+function useTema(): ["dia" | "noite", () => void] {
+  const [tema, setTema] = useState<"dia" | "noite">("noite");
+  useEffect(() => {
+    let salvo: string | null = null;
+    try {
+      salvo = localStorage.getItem("abastece:tema-painel");
+    } catch {
+      // sem storage: segue pela hora
+    }
+    if (salvo === "dia" || salvo === "noite") return setTema(salvo);
+    const h = new Date().getHours();
+    setTema(h >= 6 && h < 18 ? "dia" : "noite");
+  }, []);
+  function alternar() {
+    const novo = tema === "noite" ? "dia" : "noite";
+    setTema(novo);
+    try {
+      localStorage.setItem("abastece:tema-painel", novo);
+    } catch {
+      // ignora
+    }
+  }
+  return [tema, alternar];
 }
 
 function OdometroRapido({

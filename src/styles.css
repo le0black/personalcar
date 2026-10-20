@@ -283,3 +283,91 @@
   0%, 100% { transform: rotate(-1.2deg); }
   50% { transform: rotate(1.2deg); }
 }
+
+/* ---------- Painel estilo Tesla (Cockpit) ---------- */
+/* Tema próprio do painel: noite (padrão) e dia, como a tela do carro. */
+.tesla {
+  --t-bg: #0b0b0c;
+  --t-panel: #141416;
+  --t-elev: #1e1e21;
+  --t-line: rgb(255 255 255 / 0.08);
+  --t-text: #f4f4f5;
+  --t-dim: #8e8e93;
+  --t-blue: #3e6ae1;
+  --t-green: #34c77b;
+  --t-amber: #f5b301;
+  --t-red: #e82127;
+  --t-glass: rgb(20 20 22 / 0.78);
+  --t-car: #3a3a3f;
+  background: var(--t-bg);
+  color: var(--t-text);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tesla[data-tema="dia"] {
+  --t-bg: #e4e5e7;
+  --t-panel: #f4f4f5;
+  --t-elev: #ffffff;
+  --t-line: rgb(0 0 0 / 0.08);
+  --t-text: #171a20;
+  --t-dim: #5c5e62;
+  --t-glass: rgb(255 255 255 / 0.85);
+  --t-car: #c9cacd;
+}
+
+/* Barra de combustível no formato da bateria do Tesla. */
+.tesla-bar {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--t-line);
+  overflow: hidden;
+}
+.tesla-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--t-fill, var(--t-green));
+  transition: width 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Silhueta do carro: chão com reflexo suave. */
+.tesla-car {
+  position: relative;
+  color: var(--t-car);
+}
+.tesla-car::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -6%;
+  height: 14%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.35), transparent);
+  filter: blur(4px);
+  z-index: -1;
+}
+
+.tesla .leaflet-container {
+  background: var(--t-bg);
+  font-family: inherit;
+}
+.tesla .leaflet-control-attribution {
+  background: transparent !important;
+  color: var(--t-dim);
+  font-size: 9px;
+}
+.tesla .leaflet-control-attribution a {
+  color: inherit;
+}
+
+/* Mapa: OSM dessaturado; à noite invertido para o cinza-escuro do Tesla. */
+.tesla-map .leaflet-tile-pane {
+  filter: saturate(0.35) brightness(1.03) contrast(0.95);
+}
+.tesla-map[data-tema="noite"] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) saturate(0.25) brightness(0.85) contrast(0.9);
+}

@@ -379,6 +379,7 @@ function Dashboard() {
               }
             : null
         }
+        trilha={viagem ? gps.trilha : []}
         erroGps={gps.erro}
         onIniciarViagem={iniciarViagem}
         onEncerrarViagem={encerrarViagem}
