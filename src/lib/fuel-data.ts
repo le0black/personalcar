@@ -402,9 +402,10 @@ export function estimarCombustivel(args: {
 
 /**
  * Pesos do consumo adaptativo (mais peso ao recente). Ajustáveis aqui.
- * O consumo usado = 50% dos mais recentes + 30% do histórico recente + 20% geral.
+ * O consumo usado = 70% dos mais recentes + 25% do histórico recente + 5% geral,
+ * para a autonomia acompanhar o uso atual e não ser puxada por trechos antigos.
  */
-export const PESOS_CONSUMO = { recentes: 0.5, recenteHist: 0.3, geral: 0.2 };
+export const PESOS_CONSUMO = { recentes: 0.7, recenteHist: 0.25, geral: 0.05 };
 const JANELA_RECENTES = 2;
 const JANELA_RECENTE_HIST = 5;
 
