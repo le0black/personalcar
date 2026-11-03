@@ -24,6 +24,8 @@ export type Refuel = {
   precoLitro: number;
   combustivel: FuelType;
   tanqueCheio: boolean;
+  /** O combustível acabou (pane seca) antes deste abastecimento: o tanque estava em 0 L. */
+  tanqueVazio?: boolean;
   posto: string;
   /** Valor total pago (âncora); preço/litro = valorTotal / litros. */
   valorTotal?: number | null;
@@ -184,44 +186,53 @@ export function computeMetrics(list: Refuel[], tanque: number): Metrics | null {
   const precoMedio = litrosTotal > 0 ? gastoTotal / litrosTotal : 0;
   const kmRodados = rows[rows.length - 1]!.odometro - rows[0]!.odometro;
 
-  // ── Intervalos tanque-cheio → tanque-cheio (alta confiança) ──────────────
+  // ── Intervalos entre âncoras (alta confiança) ────────────────────────────
+  // Âncora = abastecimento com o conteúdo do tanque conhecido: tanque cheio
+  // (termina na capacidade) ou "acabou o combustível" (começa em 0 L).
+  // Consumido no trecho = conteúdo após a âncora + o que entrou no meio −
+  // conteúdo antes do fechamento. Cheio → cheio vira a soma dos litros.
   const alta: Intervalo[] = [];
-  let lastFull = -1;
+  let ancora: { i: number; conteudo: number } | null = null;
   let litrosAcum = 0;
   let gastoAcum = 0;
   let idsAcum: string[] = [];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]!;
-    if (lastFull >= 0) {
-      litrosAcum += r.litros;
-      gastoAcum += gastoDe(r);
-      idsAcum.push(r.id);
-    }
-    if (r.tanqueCheio) {
-      if (lastFull >= 0) {
-        const ini = rows[lastFull]!;
-        const km = r.odometro - ini.odometro;
-        if (km > 0 && litrosAcum > 0) {
-          const consumo = km / litrosAcum;
-          alta.push({
-            data: dataCurta(r.data),
-            km,
-            litros: litrosAcum,
-            consumo: Number(consumo.toFixed(2)),
-            preco: r.precoLitro,
-            gasto: gastoAcum,
-            custoKm: Number((gastoAcum / km).toFixed(3)),
-            confianca: "alta",
-            odoInicio: ini.odometro,
-            odoFim: r.odometro,
-            ids: [ini.id, ...idsAcum],
-          });
-        }
+    const antes = r.tanqueVazio ? 0 : r.tanqueCheio ? tanque - r.litros : null;
+    if (ancora && antes != null) {
+      const ini = rows[ancora.i]!;
+      const km = r.odometro - ini.odometro;
+      const litros = ancora.conteudo + litrosAcum - antes;
+      // Preço do combustível comprado na janela (o que entrou no meio e agora).
+      const lJanela = litrosAcum + r.litros;
+      const preco = lJanela > 0 ? (gastoAcum + gastoDe(r)) / lJanela : r.precoLitro;
+      if (km > 0 && litros > 0) {
+        const gasto = litros * preco;
+        alta.push({
+          data: dataCurta(r.data),
+          km,
+          litros,
+          consumo: Number((km / litros).toFixed(2)),
+          preco: r.precoLitro,
+          gasto,
+          custoKm: Number((gasto / km).toFixed(3)),
+          confianca: "alta",
+          odoInicio: ini.odometro,
+          odoFim: r.odometro,
+          ids: [ini.id, ...idsAcum, r.id],
+        });
       }
-      lastFull = i;
+    }
+    if (antes != null) {
+      const conteudo = r.tanqueCheio ? tanque : tanque > 0 ? Math.min(tanque, r.litros) : r.litros;
+      ancora = { i, conteudo };
       litrosAcum = 0;
       gastoAcum = 0;
       idsAcum = [];
+    } else if (ancora) {
+      litrosAcum += r.litros;
+      gastoAcum += gastoDe(r);
+      idsAcum.push(r.id);
     }
   }
 
@@ -356,23 +367,25 @@ export function estimarCombustivel(args: {
     litrosConsumidos = Number(((odometroAtual - odoBase) / consumo).toFixed(1));
   }
 
-  // Restante estimado — ancorado no último abastecimento de tanque cheio.
+  // Restante estimado — ancorado no último abastecimento com conteúdo conhecido
+  // (tanque cheio, ou abastecido depois de o combustível acabar).
   let restante: number | null = null;
   let pctTanque: number | null = null;
   let confianca: Confianca | null = null;
-  let idxCheio = -1;
+  let idxAncora = -1;
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i]!.tanqueCheio) {
-      idxCheio = i;
+    if (rows[i]!.tanqueCheio || rows[i]!.tanqueVazio) {
+      idxAncora = i;
       break;
     }
   }
-  if (idxCheio >= 0 && consumo && consumo > 0 && odometroAtual != null) {
-    const cheio = rows[idxCheio]!;
-    const km = odometroAtual - cheio.odometro;
+  if (idxAncora >= 0 && consumo && consumo > 0 && odometroAtual != null) {
+    const ancora = rows[idxAncora]!;
+    const km = odometroAtual - ancora.odometro;
     if (km >= 0) {
-      const litrosApos = rows.slice(idxCheio + 1).reduce((s, r) => s + r.litros, 0);
-      let r = tanque - km / consumo + litrosApos;
+      const litrosApos = rows.slice(idxAncora + 1).reduce((s, r) => s + r.litros, 0);
+      const base = ancora.tanqueCheio ? tanque : Math.min(tanque, ancora.litros);
+      let r = base - km / consumo + litrosApos;
       r = Math.max(0, Math.min(tanque, r));
       restante = Number(r.toFixed(1));
       pctTanque = tanque > 0 ? Number(((r / tanque) * 100).toFixed(0)) : null;
@@ -465,6 +478,8 @@ export type EventoTanque = {
   saldo: number; // saldo estimado após o evento
   /** Marcado como tanque cheio, mas os litros não completariam o tanque. */
   suspeito?: boolean;
+  /** O combustível tinha acabado: o saldo foi zerado antes de somar os litros. */
+  vazio?: boolean;
 };
 
 export type TanqueVirtual = {
@@ -546,9 +561,16 @@ export function computeTanqueVirtual(args: {
         });
       }
     }
+    let tipo: EventoTanque["tipo"] = "REFUEL";
+    if (r.tanqueVazio) {
+      // Acabou o combustível: o tanque estava em 0 L. Calibra tanto quanto um
+      // tanque cheio, e corrige um consumo estimado otimista ou pessimista.
+      saldo = 0;
+      tipo = "CALIBRACAO";
+      calibrado = true;
+    }
     const antes = saldo;
     saldo = Math.min(capacidade, saldo + r.litros);
-    let tipo: EventoTanque["tipo"] = "REFUEL";
     let suspeito = false;
     if (r.tanqueCheio) {
       // Só dá para julgar com o saldo conhecido (depois de uma calibração).
@@ -564,6 +586,7 @@ export function computeTanqueVirtual(args: {
       litros: r.litros,
       saldo: Number(saldo.toFixed(2)),
       ...(suspeito ? { suspeito } : {}),
+      ...(r.tanqueVazio ? { vazio: true } : {}),
     });
     prevOdo = r.odometro;
   }
@@ -620,7 +643,7 @@ export function computeTanqueVirtual(args: {
  */
 export function detectarAnomalias(args: {
   novo: Pick<Refuel, "odometro" | "litros" | "precoLitro" | "valorTotal" | "data"> &
-    Partial<Pick<Refuel, "tanqueCheio">>;
+    Partial<Pick<Refuel, "tanqueCheio" | "tanqueVazio">>;
   refuels: Refuel[];
   tanque: number;
   consumoMedio?: number | null | undefined;
@@ -674,7 +697,11 @@ export function detectarAnomalias(args: {
       consumo: { valor: consumoMedio, confianca: null },
       odometroAtual: novo.odometro,
     });
-    if (est.calibrado && est.litros != null) {
+    if (novo.tanqueVazio && est.litros != null && est.litros > tanque * 0.25) {
+      avisos.push(
+        `O medidor estimava ~${num(est.litros, 0)} L no tanque, mas o combustível acabou. Ele será zerado neste ponto e a média de consumo, corrigida.`,
+      );
+    } else if (!novo.tanqueVazio && est.calibrado && est.litros != null) {
       const vazio = tanque - est.litros;
       if (novo.tanqueCheio && est.litros + novo.litros < tanque * CHEIO_MINIMO) {
         avisos.push(

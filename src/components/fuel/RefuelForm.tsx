@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { Fuel } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -38,6 +40,10 @@ type Props = {
   consumoMedio?: number | null | undefined;
   /** Retorna true se salvou com sucesso (aí o formulário é limpo). */
   onAdd: (r: Refuel) => Promise<boolean> | boolean;
+  /** Abre já marcado como "acabou o combustível" (botão do painel). */
+  acabouInicial?: boolean;
+  /** Hodômetro já preenchido (ex.: onde o carro parou). */
+  odometroSugerido?: number | undefined;
 };
 
 // Formata número no padrão pt-BR, sem zeros à direita desnecessários.
@@ -51,9 +57,13 @@ export function RefuelForm({
   tanque,
   consumoMedio,
   onAdd,
+  acabouInicial = false,
+  odometroSugerido,
 }: Props) {
   const [data, setData] = useState(dataLocalISO());
-  const [odometro, setOdometro] = useState("");
+  const [odometro, setOdometro] = useState(
+    odometroSugerido && odometroSugerido > ultimoOdometro ? String(odometroSugerido) : "",
+  );
   const [litros, setLitros] = useState("");
   const [valor, setValor] = useState("");
   const [preco, setPreco] = useState("");
@@ -62,6 +72,7 @@ export function RefuelForm({
   // Desmarcado: um parcial salvo como cheio estraga o medidor; o contrário só
   // perde uma calibração (e o aviso de anomalia sugere marcar).
   const [tanqueCheio, setTanqueCheio] = useState(false);
+  const [tanqueVazio, setTanqueVazio] = useState(acabouInicial);
   const [observacoes, setObservacoes] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -122,6 +133,7 @@ export function RefuelForm({
       valorTotal: Number(val.toFixed(2)),
       combustivel,
       tanqueCheio,
+      tanqueVazio,
       posto: posto.trim() || "Não informado",
       observacoes: observacoes.trim() || null,
     };
@@ -149,6 +161,7 @@ export function RefuelForm({
         setPosto("");
         setObservacoes("");
         setTanqueCheio(false);
+        setTanqueVazio(false);
       }
     } finally {
       setEnviando(false);
@@ -261,6 +274,8 @@ export function RefuelForm({
         </span>
       </label>
 
+      <AcabouCombustivel checked={tanqueVazio} onChange={setTanqueVazio} className="mt-2" />
+
       {erro ? <p className="mt-3 text-sm text-destructive">{erro}</p> : null}
 
       <Button type="submit" className="mt-5 w-full font-semibold" disabled={enviando}>
@@ -304,5 +319,56 @@ export function RefuelForm({
         </AlertDialogContent>
       </AlertDialog>
     </form>
+  );
+}
+
+/**
+ * "Acabou o combustível" (pane seca): o tanque estava em 0 L antes deste
+ * abastecimento. Âncora exata para o medidor e para a média de consumo.
+ */
+export function AcabouCombustivel({
+  checked,
+  onChange,
+  className,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex items-center gap-3 rounded-xl border p-3 transition-colors",
+        checked ? "border-destructive/50 bg-destructive/10" : "border-border bg-card/50",
+        className,
+      )}
+    >
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(c) => onChange(c === true)}
+        aria-label="Acabou o combustível"
+        className="data-[state=checked]:border-destructive data-[state=checked]:bg-destructive"
+      />
+      <span className="min-w-0 text-sm">
+        <span className="flex items-center gap-1.5 font-medium">
+          <FuelOffIcon className="size-4 text-destructive" />
+          Acabou o combustível
+        </span>
+        <span className="block text-xs text-muted-foreground">
+          O carro parou sem combustível antes deste abastecimento. Zera o medidor e mede o consumo
+          real até aqui.
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/** Bomba de combustível riscada. */
+export function FuelOffIcon({ className }: { className?: string }) {
+  return (
+    <span className={cn("relative inline-grid shrink-0 place-items-center", className)}>
+      <Fuel className="size-full" />
+      <span className="absolute h-[2px] w-[130%] -rotate-45 rounded-full bg-current" />
+    </span>
   );
 }

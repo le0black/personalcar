@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AcabouCombustivel, FuelOffIcon } from "@/components/fuel/RefuelForm";
 import { brl, num, parseNumero, type FuelType, type Refuel } from "@/lib/fuel-data";
 
 type Props = {
@@ -54,6 +55,7 @@ export function RefuelItem({ refuel, onSave, onDelete }: Props) {
   const [combustivel, setCombustivel] = useState<FuelType>(refuel.combustivel);
   const [posto, setPosto] = useState(refuel.posto);
   const [tanqueCheio, setTanqueCheio] = useState(refuel.tanqueCheio);
+  const [tanqueVazio, setTanqueVazio] = useState(refuel.tanqueVazio ?? false);
   const [observacoes, setObservacoes] = useState(refuel.observacoes ?? "");
   const [erro, setErro] = useState<string | null>(null);
 
@@ -67,6 +69,7 @@ export function RefuelItem({ refuel, onSave, onDelete }: Props) {
       setCombustivel(refuel.combustivel);
       setPosto(refuel.posto);
       setTanqueCheio(refuel.tanqueCheio);
+      setTanqueVazio(refuel.tanqueVazio ?? false);
       setObservacoes(refuel.observacoes ?? "");
       setErro(null);
     }
@@ -115,6 +118,7 @@ export function RefuelItem({ refuel, onSave, onDelete }: Props) {
       combustivel,
       posto: posto.trim() || "Não informado",
       tanqueCheio,
+      tanqueVazio,
       observacoes: observacoes.trim() || null,
     });
     setOpen(false);
@@ -132,6 +136,11 @@ export function RefuelItem({ refuel, onSave, onDelete }: Props) {
           <span className="truncate">
             {refuel.posto} · {refuel.combustivel}
           </span>
+          {refuel.tanqueVazio ? (
+            <span className="flex shrink-0 items-center gap-1 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+              <FuelOffIcon className="size-2.5" /> acabou
+            </span>
+          ) : null}
           {!refuel.tanqueCheio ? (
             <span className="shrink-0 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
               parcial
@@ -263,6 +272,8 @@ export function RefuelItem({ refuel, onSave, onDelete }: Props) {
                   />
                   <span className="text-sm font-medium">Tanque cheio</span>
                 </label>
+
+                <AcabouCombustivel checked={tanqueVazio} onChange={setTanqueVazio} />
 
                 {erro ? <p className="text-sm text-destructive">{erro}</p> : null}
 

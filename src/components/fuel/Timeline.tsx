@@ -62,7 +62,7 @@ export function Timeline({ intervalos, refuels }: Props) {
                           `${new Date(r.data + "T00:00:00").toLocaleDateString("pt-BR", {
                             day: "2-digit",
                             month: "2-digit",
-                          })} (${num(r.litros, 1)} L${r.tanqueCheio ? "" : ", parcial"})`,
+                          })} (${num(r.litros, 1)} L${r.tanqueVazio ? ", acabou antes" : ""}${r.tanqueCheio ? "" : ", parcial"})`,
                       )
                       .join(" · ")}
                   </p>

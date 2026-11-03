@@ -28,6 +28,7 @@ create table if not exists public.refuels (
   preco_litro  numeric not null check (preco_litro >= 0),
   combustivel  text not null default 'Gasolina',
   tanque_cheio boolean not null default true,
+  tanque_vazio boolean not null default false,
   posto        text not null default 'Não informado',
   created_at   timestamptz not null default now()
 );

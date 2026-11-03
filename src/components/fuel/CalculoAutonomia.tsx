@@ -9,7 +9,7 @@ const km = (n: number) => `${n.toLocaleString("pt-BR")} km`;
 
 /**
  * "Como calculei": a conta da autonomia passo a passo, a partir do último
- * tanque cheio, para o usuário conferir com os próprios números.
+ * tanque cheio (ou do combustível acabando), para o usuário conferir com os próprios números.
  */
 export function CalculoAutonomia({ tanque }: { tanque: TanqueVirtual }) {
   const cu = tanque.consumoUtilizado;
@@ -104,8 +104,8 @@ function Passo({
   return (
     <li className="numeral flex justify-between gap-3 font-medium">
       <span className="min-w-0">
-        {dataCurta(e.data)} · {km(e.odometro)} ·{" "}
-        {e.tipo === "CALIBRACAO" ? "tanque cheio" : `+${num(e.litros, 1)} L`}
+        {dataCurta(e.data)} · {km(e.odometro)} · {e.vazio ? "acabou o combustível · " : ""}
+        {e.tipo === "CALIBRACAO" && !e.vazio ? "tanque cheio" : `+${num(e.litros, 1)} L`}
         {e.suspeito ? <AlertTriangle className="ml-1 inline size-3.5 text-warning" /> : null}
       </span>
       <span className="shrink-0 whitespace-nowrap">{num(e.saldo, 1)} L</span>

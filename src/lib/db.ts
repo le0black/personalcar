@@ -32,13 +32,24 @@ type RefuelRow = {
   preco_litro: number;
   combustivel: string;
   tanque_cheio: boolean;
+  tanque_vazio?: boolean | null;
   posto: string;
   valor_total: number | null;
   observacoes: string | null;
 };
 
-const REFUEL_COLS =
+const REFUEL_COLS_BASE =
   "id, vehicle_id, data, odometro, litros, preco_litro, combustivel, tanque_cheio, posto, valor_total, observacoes";
+
+/**
+ * `tanque_vazio` vem da migração 004. Enquanto ela não roda, o banco recusa a
+ * coluna (42703); aí o app segue sem ela em vez de não carregar nada.
+ */
+let temTanqueVazio = true;
+const refuelCols = () => (temTanqueVazio ? `${REFUEL_COLS_BASE}, tanque_vazio` : REFUEL_COLS_BASE);
+const semColuna = (e: { code?: string } | null) => e?.code === "42703" || e?.code === "PGRST204";
+const ERRO_MIGRACAO =
+  "Para marcar que o combustível acabou, rode a migração supabase/migrations/004_tanque_vazio.sql no Supabase.";
 
 // ── Mapeamentos ───────────────────────────────────────────────────────────
 const toVehicle = (r: VehicleRow): Vehicle => ({
@@ -62,6 +73,7 @@ const toRefuel = (r: RefuelRow): Refuel => ({
   precoLitro: Number(r.preco_litro),
   combustivel: r.combustivel as FuelType,
   tanqueCheio: r.tanque_cheio,
+  tanqueVazio: r.tanque_vazio === true,
   posto: r.posto,
   valorTotal: r.valor_total === null ? null : Number(r.valor_total),
   observacoes: r.observacoes,
@@ -148,12 +160,15 @@ export async function deleteVehicle(id: string): Promise<void> {
 // ── Abastecimentos ────────────────────────────────────────────────────────
 export async function fetchRefuels(): Promise<Refuel[]> {
   const sb = requireSupabase();
-  const { data, error } = await sb
-    .from("refuels")
-    .select(REFUEL_COLS)
-    .order("odometro", { ascending: true });
+  const buscar = () =>
+    sb.from("refuels").select(refuelCols()).order("odometro", { ascending: true });
+  let { data, error } = await buscar();
+  if (semColuna(error) && temTanqueVazio) {
+    temTanqueVazio = false;
+    ({ data, error } = await buscar());
+  }
   if (error) throw error;
-  return (data as RefuelRow[]).map(toRefuel);
+  return (data as unknown as RefuelRow[]).map(toRefuel);
 }
 
 /** Insere um abastecimento. `user_id` é preenchido pelo default do banco. */
@@ -169,14 +184,16 @@ export async function insertRefuel(r: Omit<Refuel, "id">): Promise<Refuel> {
       preco_litro: r.precoLitro,
       combustivel: r.combustivel,
       tanque_cheio: r.tanqueCheio,
+      ...(r.tanqueVazio ? { tanque_vazio: true } : {}),
       posto: r.posto,
       valor_total: r.valorTotal ?? null,
       observacoes: r.observacoes ?? null,
     })
-    .select(REFUEL_COLS)
+    .select(refuelCols())
     .single();
+  if (semColuna(error)) throw new Error(ERRO_MIGRACAO);
   if (error) throw error;
-  return toRefuel(data as RefuelRow);
+  return toRefuel(data as unknown as RefuelRow);
 }
 
 /** Atualiza campos editáveis de um abastecimento (marca updated_at). */
@@ -192,6 +209,9 @@ export async function updateRefuel(
   if (r.precoLitro !== undefined) patch["preco_litro"] = r.precoLitro;
   if (r.combustivel !== undefined) patch["combustivel"] = r.combustivel;
   if (r.tanqueCheio !== undefined) patch["tanque_cheio"] = r.tanqueCheio;
+  // Sem a migração 004, só falha quem tenta marcar; desmarcado não precisa da coluna.
+  if (r.tanqueVazio !== undefined && (temTanqueVazio || r.tanqueVazio))
+    patch["tanque_vazio"] = r.tanqueVazio;
   if (r.posto !== undefined) patch["posto"] = r.posto;
   if (r.valorTotal !== undefined) patch["valor_total"] = r.valorTotal;
   if (r.observacoes !== undefined) patch["observacoes"] = r.observacoes;
@@ -199,10 +219,11 @@ export async function updateRefuel(
     .from("refuels")
     .update(patch)
     .eq("id", id)
-    .select(REFUEL_COLS)
+    .select(refuelCols())
     .single();
+  if (semColuna(error)) throw new Error(ERRO_MIGRACAO);
   if (error) throw error;
-  return toRefuel(data as RefuelRow);
+  return toRefuel(data as unknown as RefuelRow);
 }
 
 export async function deleteRefuel(id: string): Promise<void> {

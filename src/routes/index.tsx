@@ -24,6 +24,7 @@ import { OdometerPanel } from "@/components/fuel/OdometerPanel";
 import { FuelCard } from "@/components/fuel/FuelCard";
 import { FuelGauge } from "@/components/fuel/FuelGauge";
 import { Cockpit } from "@/components/fuel/Cockpit";
+import type { DadosResumoViagem } from "@/components/fuel/ResumoViagem";
 import { Timeline } from "@/components/fuel/Timeline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useViagemGps } from "@/hooks/use-viagem-gps";
@@ -98,6 +99,7 @@ function Dashboard() {
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
   const [tela, setTela] = useTela();
+  const [resumoViagem, setResumoViagem] = useState<DadosResumoViagem | null>(null);
 
   // Carrega veículos e abastecimentos do usuário logado.
   useEffect(() => {
@@ -227,6 +229,7 @@ function Dashboard() {
         precoLitro: r.precoLitro,
         combustivel: r.combustivel,
         tanqueCheio: r.tanqueCheio,
+        tanqueVazio: r.tanqueVazio ?? false,
         posto: r.posto,
         valorTotal: r.valorTotal ?? null,
         observacoes: r.observacoes ?? null,
@@ -311,25 +314,35 @@ function Dashboard() {
     gps.iniciar(vehicle.id, Math.max(odoVigente, ultimoOdometro));
   }
 
-  /** Encerra a viagem e grava o odômetro com os km rodados. */
+  /**
+   * Encerra a viagem, mostra o recibo com o custo estimado e grava o odômetro
+   * com os km rodados. Custo = km ÷ consumo do medidor × preço do último litro.
+   */
   async function encerrarViagem() {
     const fim = gps.encerrar();
     const v = vehicles.find((x) => x.id === fim?.vehicleId);
     if (!fim || !v) return;
     const anterior = v.odometroAtual ?? 0;
     const novo = Math.round(fim.base + fim.distancia);
-    const resumo = `${num(fim.distancia, 1)} km rodados`;
-    if (novo <= anterior) {
-      toast.info("Viagem encerrada", { description: resumo });
-      return;
-    }
+
+    const consumo = tanqueVirtual?.consumoUtilizado ?? metrics?.consumoMedio ?? null;
+    const preco = doVeiculo[0]?.precoLitro ?? metrics?.precoMedio ?? null;
+    const litros = consumo && consumo > 0 ? fim.distancia / consumo : null;
+    setResumoViagem({
+      distancia: fim.distancia,
+      segundos: Math.max(0, Math.round((Date.now() - fim.inicio) / 1000)),
+      litros,
+      consumo,
+      precoLitro: preco,
+      custo: litros != null && preco ? litros * preco : null,
+      odometro: Math.max(novo, anterior) || null,
+    });
+
+    if (novo <= anterior) return;
     try {
       const salvo = await updateOdometro(v.id, novo);
       setVehicles((prev) => prev.map((x) => (x.id === v.id ? salvo : x)));
       setOdometros((p) => ({ ...p, [v.id]: novo }));
-      toast.success("Viagem encerrada", {
-        description: `${resumo} · odômetro ${novo.toLocaleString("pt-BR")} km`,
-      });
     } catch {
       toast.error("Não foi possível salvar o odômetro da viagem.", {
         description: `Anote e atualize à mão: ${novo.toLocaleString("pt-BR")} km.`,
@@ -383,6 +396,8 @@ function Dashboard() {
         erroGps={gps.erro}
         onIniciarViagem={iniciarViagem}
         onEncerrarViagem={encerrarViagem}
+        resumoViagem={resumoViagem}
+        onFecharResumo={() => setResumoViagem(null)}
       />
     );
   }

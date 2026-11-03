@@ -10,6 +10,7 @@ import {
   Navigation,
   Square,
   Sun,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,8 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { RefuelForm } from "@/components/fuel/RefuelForm";
+import { FuelOffIcon, RefuelForm } from "@/components/fuel/RefuelForm";
+import { ResumoViagem, type DadosResumoViagem } from "@/components/fuel/ResumoViagem";
 import { CalculoAutonomia } from "@/components/fuel/CalculoAutonomia";
 import { CockpitMap } from "@/components/fuel/CockpitMap";
 import { VehicleIllustration } from "@/components/fuel/VehicleIllustration";
@@ -56,6 +58,9 @@ type Props = {
   erroGps: string | null;
   onIniciarViagem: () => void;
   onEncerrarViagem: () => Promise<void> | void;
+  /** Recibo da viagem recém-encerrada (null quando fechado). */
+  resumoViagem: DadosResumoViagem | null;
+  onFecharResumo: () => void;
 };
 
 export type ViagemAoVivo = {
@@ -87,14 +92,31 @@ export function Cockpit({
   erroGps,
   onIniciarViagem,
   onEncerrarViagem,
+  resumoViagem,
+  onFecharResumo,
 }: Props) {
   const [abastecer, setAbastecer] = useState(false);
+  const [paneSeca, setPaneSeca] = usePaneSeca(vehicle.id, refuels);
   const [atualizarKm, setAtualizarKm] = useState(false);
   const [calculo, setCalculo] = useState(false);
   const modoCarro = useModoCarro();
   const hora = useRelogio();
   const [tema, alternarTema] = useTema();
 
+  // Combustível acabou e o abastecimento ainda não foi registrado: o tanque
+  // está em 0 L, seja qual for a estimativa.
+  if (paneSeca != null) {
+    tanque = {
+      ...tanque,
+      litros: 0,
+      pct: 0,
+      autonomia: 0,
+      autonomiaAteReserva: 0,
+      autonomiaAoAbastecer: null,
+      emReserva: true,
+      atencao: false,
+    };
+  }
   const semDados = tanque.semDados || tanque.litros == null || tanque.pct == null;
   const pct = tanque.pct ?? 0;
   const cor = tanque.emReserva
@@ -169,7 +191,11 @@ export function Cockpit({
                 <span className="ml-1 text-[0.28em] font-normal text-[var(--t-dim)]">km</span>
               </span>
               <span className="text-xs font-medium uppercase tracking-[0.25em] text-[var(--t-dim)]">
-                {tanque.calibrado ? "autonomia" : "autonomia · sem calibração"}
+                {paneSeca != null
+                  ? "sem combustível"
+                  : tanque.calibrado
+                    ? "autonomia"
+                    : "autonomia · sem calibração"}
               </span>
               {tanque.autonomiaAoAbastecer != null && tanque.kmDesdeAbastecimento ? (
                 <span className="text-xs tabular-nums text-[var(--t-dim)]">
@@ -222,7 +248,29 @@ export function Cockpit({
       <section className="relative isolate min-h-0">
         <CockpitMap tema={tema} trilha={trilha} className="absolute inset-0" />
 
-        {tanque.emReserva || tanque.atencao ? (
+        {paneSeca != null ? (
+          <div className="absolute inset-x-0 top-3 z-[500] flex justify-start px-3 landscape:justify-center landscape:px-4">
+            <p className="flex items-center rounded-full bg-[var(--t-red)] text-sm font-semibold text-white shadow-lg">
+              <button
+                type="button"
+                onClick={() => setAbastecer(true)}
+                className="flex items-center gap-2 py-2 pl-4 pr-2"
+              >
+                <FuelOffIcon className="size-4" />
+                Sem combustível · registrar
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaneSeca(null)}
+                className="grid size-9 place-items-center rounded-full hover:bg-white/15"
+                aria-label="Desfazer: o combustível não acabou"
+                title="Desfazer"
+              >
+                <X className="size-4" />
+              </button>
+            </p>
+          </div>
+        ) : tanque.emReserva || tanque.atencao ? (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-[500] flex justify-start px-3 landscape:justify-center landscape:px-4">
             <p
               className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg"
@@ -267,12 +315,23 @@ export function Cockpit({
         <DockButton label="Odômetro" onClick={() => setAtualizarKm(true)}>
           <Gauge />
         </DockButton>
+        <DockButton
+          label="Acabou o combustível"
+          onClick={() => {
+            if (paneSeca == null) setPaneSeca(odometro);
+            setAbastecer(true);
+          }}
+          ativo={paneSeca != null}
+          perigo
+        >
+          <FuelOffIcon />
+        </DockButton>
 
         {viagem ? (
           <button
             type="button"
             onClick={() => void onEncerrarViagem()}
-            className="flex h-12 items-center gap-2 rounded-full border-2 border-[var(--t-red)] px-4 text-sm font-semibold text-[var(--t-red)] landscape:h-11"
+            className="flex h-12 shrink-0 items-center gap-2 rounded-full border-2 border-[var(--t-red)] px-3 text-sm font-semibold text-[var(--t-red)] min-[400px]:px-4 landscape:h-11"
           >
             <Square className="size-4 fill-current" /> Encerrar
           </button>
@@ -280,7 +339,7 @@ export function Cockpit({
           <button
             type="button"
             onClick={() => void iniciarViagem()}
-            className="flex h-12 items-center gap-2 rounded-full bg-[var(--t-blue)] px-4 text-sm font-semibold text-white shadow-lg landscape:h-11"
+            className="flex h-12 shrink-0 items-center gap-2 rounded-full bg-[var(--t-blue)] px-3 text-sm font-semibold text-white shadow-lg min-[400px]:px-4 landscape:h-11"
           >
             <Navigation className="size-4 fill-current" /> Viagem
           </button>
@@ -304,11 +363,25 @@ export function Cockpit({
       <Drawer open={abastecer} onOpenChange={setAbastecer}>
         <DrawerContent className="max-h-[92dvh]">
           <DrawerHeader className="sr-only">
-            <DrawerTitle>Novo abastecimento</DrawerTitle>
+            <DrawerTitle>
+              {paneSeca != null ? "Acabou o combustível" : "Novo abastecimento"}
+            </DrawerTitle>
             <DrawerDescription>Registre litros, valor e odômetro.</DrawerDescription>
           </DrawerHeader>
           <div className="mx-auto w-full max-w-2xl overflow-y-auto p-4">
+            {paneSeca != null ? (
+              <p className="mb-3 flex gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                <FuelOffIcon className="mt-0.5 size-4 text-destructive" />
+                <span>
+                  Anotado que o combustível acabou em{" "}
+                  <b className="numeral">{paneSeca.toLocaleString("pt-BR")} km</b>. Quando colocar
+                  combustível, registre aqui: o medidor zera neste ponto e a média fica exata.
+                </span>
+              </p>
+            ) : null}
             <RefuelForm
+              acabouInicial={paneSeca != null}
+              odometroSugerido={paneSeca ?? undefined}
               vehicleId={vehicle.id}
               ultimoOdometro={ultimoOdometro}
               refuels={refuels}
@@ -316,13 +389,18 @@ export function Cockpit({
               consumoMedio={consumoMedio}
               onAdd={async (r) => {
                 const ok = await onAddRefuel(r);
-                if (ok) setAbastecer(false);
+                if (ok) {
+                  setAbastecer(false);
+                  setPaneSeca(null);
+                }
                 return ok;
               }}
             />
           </div>
         </DrawerContent>
       </Drawer>
+
+      {resumoViagem ? <ResumoViagem dados={resumoViagem} onFechar={onFecharResumo} /> : null}
 
       <Drawer open={calculo} onOpenChange={setCalculo}>
         <DrawerContent className="max-h-[92dvh]">
@@ -436,11 +514,14 @@ function DockButton({
   label,
   onClick,
   ativo,
+  perigo,
   children,
 }: {
   label: string;
   onClick: () => void;
   ativo?: boolean;
+  /** Ação de alerta (vermelha). */
+  perigo?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -449,10 +530,10 @@ function DockButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`grid size-11 shrink-0 place-items-center rounded-xl transition-colors [&_svg]:size-6 ${
+      className={`grid size-10 shrink-0 place-items-center rounded-xl transition-colors min-[400px]:size-11 [&>span]:size-6 [&_svg]:size-6 ${
         ativo
-          ? "bg-[var(--t-elev)] text-[var(--t-blue)]"
-          : "text-[var(--t-dim)] hover:bg-[var(--t-elev)] hover:text-[var(--t-text)]"
+          ? `bg-[var(--t-elev)] ${perigo ? "text-[var(--t-red)]" : "text-[var(--t-blue)]"}`
+          : `text-[var(--t-dim)] hover:bg-[var(--t-elev)] ${perigo ? "hover:text-[var(--t-red)]" : "hover:text-[var(--t-text)]"}`
       }`}
     >
       {children}
@@ -613,4 +694,39 @@ function useModoCarro() {
   }
 
   return { ativo, alternar };
+}
+
+/**
+ * "Acabou o combustível" ainda sem abastecimento registrado: guarda o odômetro
+ * onde o carro parou, por veículo, neste aparelho. Some sozinho quando entra um
+ * abastecimento a partir desse ponto (registrado aqui ou nos Detalhes).
+ */
+function usePaneSeca(
+  vehicleId: string,
+  refuels: Refuel[],
+): [number | null, (km: number | null) => void] {
+  const chave = `abastece:pane-seca:${vehicleId}`;
+  const [km, setKm] = useState<number | null>(null);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(chave);
+      setKm(v ? Number(v) : null);
+    } catch {
+      setKm(null);
+    }
+  }, [chave]);
+  function definir(novo: number | null) {
+    setKm(novo);
+    try {
+      if (novo == null) localStorage.removeItem(chave);
+      else localStorage.setItem(chave, String(novo));
+    } catch {
+      // sem storage: vale só até recarregar
+    }
+  }
+  const ultimo = refuels.reduce((m, r) => Math.max(m, r.odometro), 0);
+  useEffect(() => {
+    if (km != null && ultimo > km) definir(null);
+  }, [km, ultimo]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [km, definir];
 }
