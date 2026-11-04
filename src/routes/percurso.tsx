@@ -8,6 +8,7 @@ import { AuthGate } from "@/components/auth/AuthGate";
 import { fetchRefuels, fetchVehicles, updateOdometro } from "@/lib/db";
 import { type LatLng } from "@/lib/geo";
 import { useViagemGps } from "@/hooks/use-viagem-gps";
+import { criarCamadaPostos } from "@/components/fuel/postos-layer";
 import { num, type Vehicle } from "@/lib/fuel-data";
 
 export const Route = createFileRoute("/percurso")({
@@ -93,6 +94,7 @@ function Percurso() {
   useEffect(() => {
     if (carregando) return;
     let cancelado = false;
+    let pararPostos: (() => void) | undefined;
     (async () => {
       const mod = await import("leaflet");
       const L = mod.default ?? mod;
@@ -112,6 +114,7 @@ function Percurso() {
         fillOpacity: 1,
       });
       mapRef.current = map;
+      pararPostos = criarCamadaPostos(L, map);
       setTimeout(() => map.invalidateSize(), 150);
       // Centraliza na posição atual, se permitido.
       navigator.geolocation?.getCurrentPosition(
@@ -126,6 +129,7 @@ function Percurso() {
     })();
     return () => {
       cancelado = true;
+      pararPostos?.();
       mapRef.current?.remove();
       mapRef.current = null;
     };

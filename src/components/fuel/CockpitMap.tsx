@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
 import type { LatLng } from "@/lib/geo";
+import { criarCamadaPostos } from "@/components/fuel/postos-layer";
 
 type Props = {
   tema: "dia" | "noite";
@@ -35,6 +36,7 @@ export function CockpitMap({ tema, trilha, className }: Props) {
   // Cria o mapa (Leaflet só no cliente) e centraliza na posição atual.
   useEffect(() => {
     let cancelado = false;
+    let pararPostos: (() => void) | undefined;
     (async () => {
       const mod = await import("leaflet");
       const L = mod.default ?? mod;
@@ -59,6 +61,7 @@ export function CockpitMap({ tema, trilha, className }: Props) {
         fillOpacity: 1,
       });
       mapRef.current = map;
+      pararPostos = criarCamadaPostos(L, map);
       setTimeout(() => map.invalidateSize(), 150);
       navigator.geolocation?.getCurrentPosition(
         (p) => mover([p.coords.latitude, p.coords.longitude]),
@@ -68,6 +71,7 @@ export function CockpitMap({ tema, trilha, className }: Props) {
     })();
     return () => {
       cancelado = true;
+      pararPostos?.();
       mapRef.current?.remove();
       mapRef.current = null;
     };
